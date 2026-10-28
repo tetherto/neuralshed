@@ -1,0 +1,53 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "neuralshed"
+version = "0.1.0"
+description = "Exploration and scaffolding for the neuralshed project, built on the neuroai stack."
+requires-python = ">=3.12"   # neuroai requires Python 3.12+
+dependencies = [
+    "neuralset[tutorials]",
+    "neuralfetch",
+    "neuraltrain",
+    "neuralbench",
+    "requests",   
+    "scipy",      
+    "pynwb",
+    "plotly",
+    "psycopg[binary]",
+    "sqlalchemy>=2.0",
+    "alembic",
+    "python-dotenv",
+]
+
+[project.optional-dependencies]
+all = [
+    "g2p_en",
+    "jupyterlab",
+    "ipykernel",
+    "anywidget>=0.9",
+    "ipywidgets>=8",
+    "black",
+]
+g2p = [
+    "g2p_en",  # regenerates jude_2026_speech/assets/cue_phonemes.json
+]
+viz = [
+    "anywidget>=0.9",
+    "ipywidgets>=8",
+]
+collection_builder = [
+    "fastapi",
+    "uvicorn[standard]",
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"*" = ["*.md", "*.json"]

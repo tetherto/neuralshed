@@ -1,0 +1,96 @@
+{
+  "ontology": "HOMBA",
+  "id_property": "homba_id",
+  "source": "https://github.com/brain-bican/harmonized_ontology_of_mammalian_brain_anatomy_ontology/releases/download/v2026-04-28/homba-simple.obo",
+  "version": "v2026-04-28",
+  "relation": "part_of (BFO:0000050)",
+  "roots": [
+    "HOMBA_10154"
+  ],
+  "leaves": [
+    "HOMBA_10163",
+    "HOMBA_10165",
+    "HOMBA_10169",
+    "HOMBA_10170",
+    "HOMBA_10186",
+    "HOMBA_AA30011"
+  ],
+  "nodes": {
+    "HOMBA_10154": {
+      "label": "central nervous system (neural tube)",
+      "parent": null
+    },
+    "HOMBA_10155": {
+      "label": "brain",
+      "parent": "HOMBA_10154"
+    },
+    "HOMBA_AA30000": {
+      "label": "gray matter of brain",
+      "parent": "HOMBA_10155"
+    },
+    "HOMBA_10156": {
+      "label": "gray matter of forebrain (prosencephalon)",
+      "parent": "HOMBA_AA30000"
+    },
+    "HOMBA_10158": {
+      "label": "telencephalon",
+      "parent": "HOMBA_10156"
+    },
+    "HOMBA_10159": {
+      "label": "cerebral cortex",
+      "parent": "HOMBA_10158"
+    },
+    "HOMBA_10160": {
+      "label": "neocortex (isocortex)",
+      "parent": "HOMBA_10159"
+    },
+    "HOMBA_AA30001": {
+      "label": "regions (areas) of neocortex",
+      "parent": "HOMBA_10160"
+    },
+    "HOMBA_10161": {
+      "label": "frontal cortex",
+      "parent": "HOMBA_AA30001"
+    },
+    "HOMBA_10172": {
+      "label": "prefrontal cortex",
+      "parent": "HOMBA_10161"
+    },
+    "HOMBA_AA30009": {
+      "label": "frontal motor cortex (posterior frontal cortex)",
+      "parent": "HOMBA_10161"
+    },
+    "HOMBA_10163": {
+      "label": "primary motor cortex (first motor cortex, area 4, area FA)",
+      "parent": "HOMBA_AA30009"
+    },
+    "HOMBA_10168": {
+      "label": "premotor cortex (area 6, area FB, secondary motor cortex)",
+      "parent": "HOMBA_AA30009"
+    },
+    "HOMBA_10185": {
+      "label": "ventrolateral prefrontal cortex (Broca's area in dominant hemisphere)",
+      "parent": "HOMBA_10172"
+    },
+    "HOMBA_10165": {
+      "label": "upper limb regions of M1",
+      "parent": "HOMBA_10163"
+    },
+    "HOMBA_10169": {
+      "label": "laterodorsal division of area 6",
+      "parent": "HOMBA_10168"
+    },
+    "HOMBA_10170": {
+      "label": "lateroventral division of area 6",
+      "parent": "HOMBA_10168"
+    },
+    "HOMBA_10186": {
+      "label": "caudal division of VFC (area 44)",
+      "parent": "HOMBA_10185"
+    },
+    "HOMBA_AA30011": {
+      "label": "area 55b of promotor cortex",
+      "parent": "HOMBA_10169"
+    }
+  }
+}

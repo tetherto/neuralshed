@@ -1,0 +1,9 @@
+# conda env create -f environment.yaml
+name: tether
+channels:
+  - defaults
+dependencies:
+  - python=3.12
+  - pip
+  - pip:
+      - -e .[all]

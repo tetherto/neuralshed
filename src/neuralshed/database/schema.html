@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>neuralshed Metadata Database — Schema</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; margin: 0; padding: 1.5rem 2rem;
+          background: #fafafa; color: #1a1a1a; }
+  @media (prefers-color-scheme: dark) { body { background:#16181d; color:#e6e6e6; } }
+  header { margin-bottom: 1rem; }
+  h1 { font-size: 1.25rem; margin: 0 0 .25rem; }
+  p.sub { margin: 0; opacity: .7; font-size: .9rem; }
+  .diagram { overflow: auto; padding: 1rem; border-radius: 10px;
+              background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+  @media (prefers-color-scheme: dark) { .diagram { background:#1f2228; box-shadow:none; } }
+  footer { margin-top: 1rem; font-size: .8rem; opacity: .6; }
+</style>
+</head>
+<body>
+<header>
+  <h1>neuralshed Metadata Database — Schema (SOW §3.2)</h1>
+  <p class="sub">9 tables · generated from <code>neuralshed/database/schema.py</code> (SQLAlchemy metadata). PK = primary key, FK = foreign key.</p>
+</header>
+<div class="diagram">
+<pre class="mermaid">
+erDiagram
+    BRAIN_AREAS |o--o{ ARRAYS : brain_area
+    COLLECTIONS ||--o{ COLLECTION_DATASETS : collection
+    DATASETS ||--o{ COLLECTION_DATASETS : dataset
+    DATASETS ||--o{ EVENT_TYPES : dataset
+    DATASETS ||--o{ SESSIONS : dataset
+    DATASETS ||--o{ SUBJECTS : dataset
+    PARTICIPANTS |o--o{ SUBJECTS : participant
+    SUBJECTS |o--o{ SESSIONS : subject
+    SUBJECTS ||--o{ ARRAYS : subject
+    SUBJECTS ||--o{ BRAIN_AREAS : subject
+
+    COLLECTIONS {
+        int id PK
+        string name
+        text description
+        text notes
+        json chain
+        json input_event_types
+        json target_event_types
+        json manifest
+        string manifest_built_at
+        string manifest_recipe_digest
+        int manifest_builder_version
+    }
+    DATASETS {
+        string id PK
+        string title
+        text description
+        string source_data_platform
+        string source_id
+        string source_data_url
+        string status
+        string macro_task
+        string decode_target
+        text bibtex
+        string publication_doi
+        string code_repo
+        string licence
+        text notes
+        string study_class
+    }
+    PARTICIPANTS {
+        string id PK
+        string label
+        string namespace
+        string species
+        string sex
+        string implant_date
+        string handedness
+        text description
+    }
+    COLLECTION_DATASETS {
+        int id PK
+        int collection_id FK
+        string dataset_id FK
+    }
+    EVENT_TYPES {
+        int id PK
+        string dataset_id FK
+        string name
+        string category
+        string event_class
+        string signal_type
+        string modality
+        float bin_size_ms
+        float rate_hz
+        string dtype
+        string task_condition
+        text description
+    }
+    SUBJECTS {
+        int id PK
+        string dataset_id FK
+        string participant_id FK
+        string label
+        string age
+        string time_since_implant
+        json clinical_condition
+    }
+    BRAIN_AREAS {
+        int id PK
+        int subject_id FK
+        string raw_label
+        string homba_term
+        string homba_id
+        string uberon_id
+        string brodmann
+        text description
+    }
+    SESSIONS {
+        int id PK
+        string dataset_id FK
+        int subject_id FK
+        string label
+        string task
+        string task_condition
+        string date
+        int post_implant_day
+        int n_trials
+        string original_split
+    }
+    ARRAYS {
+        int id PK
+        int subject_id FK
+        string name
+        string hemisphere
+        string device_type
+        int n_channels
+        int channel_start
+        int channel_stop
+        int brain_area_id FK
+        json stereotaxic_coordinates
+    }
+</pre>
+</div>
+<footer>Regenerate: <code>python -m neuralshed.database.schema_diagram</code></footer>
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+  const dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+  mermaid.initialize({ startOnLoad: true, theme: dark ? "dark" : "default" });
+</script>
+</body>
+</html>
