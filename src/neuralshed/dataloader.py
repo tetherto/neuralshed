@@ -29,14 +29,47 @@ class SegmentSample:
 
 @dataclasses.dataclass(frozen=True)
 class PadSpec:
-    """Describe one variable-length axis in an unbatched sample tensor."""
+    """Describe the variable-length axes of an unbatched sample tensor.
+
+    ``axis`` is the main variable axis, usually time; its original sizes are
+    recorded in :attr:`RaggedBatch.lengths`. ``extra_axes`` lists further axes
+    that may also differ between samples, such as the channel axis when one
+    batch mixes recordings of different widths; their sizes are recorded in
+    :attr:`RaggedBatch.extra_lengths`. Padding channels only makes rows the
+    same shape: channel ``i`` of one recording is not channel ``i`` of another,
+    so each row still needs the adapter selected by its data layout key.
+    """
 
     axis: int
     pad_value: int | float | bool = 0
+    extra_axes: tuple[int, ...] = ()
 
     def __post_init__(self) -> None:
         if not isinstance(self.axis, int) or isinstance(self.axis, bool):
             raise TypeError(f"axis must be an int, got {type(self.axis).__name__}")
+        if not isinstance(self.extra_axes, (tuple, list)):
+            raise TypeError(
+                "extra_axes must be a tuple of ints, got "
+                f"{type(self.extra_axes).__name__}"
+            )
+        for extra in self.extra_axes:
+            if not isinstance(extra, int) or isinstance(extra, bool):
+                raise TypeError(
+                    f"extra_axes must contain ints, got {type(extra).__name__}"
+                )
+        if self.axis in self.extra_axes or len(set(self.extra_axes)) != len(
+            self.extra_axes
+        ):
+            raise ValueError(
+                f"padding axes must be distinct, got axis={self.axis} and "
+                f"extra_axes={tuple(self.extra_axes)}"
+            )
+        # Configs loaded from JSON or YAML give a list.
+        object.__setattr__(self, "extra_axes", tuple(self.extra_axes))
+
+    def __repr__(self) -> str:
+        extra = f", extra_axes={self.extra_axes}" if self.extra_axes else ""
+        return f"PadSpec(axis={self.axis}, pad_value={self.pad_value!r}{extra})"
 
 
 @dataclasses.dataclass(kw_only=True)
@@ -46,11 +79,16 @@ class RaggedBatch(ns.dataloader.Batch):
     ``lengths`` records the size of each configured variable axis before
     padding. ``axes`` uses the corresponding unbatched tensor coordinates;
     the batch dimension added during collation is therefore not counted.
+    ``extra_lengths`` does the same for any extra padded axes, keyed by field
+    and then by unbatched axis.
     """
 
     lengths: dict[str, torch.Tensor]
     axes: dict[str, int]
     metadata: dict[str, list[tp.Any]] = dataclasses.field(default_factory=dict)
+    extra_lengths: dict[str, dict[int, torch.Tensor]] = dataclasses.field(
+        default_factory=dict
+    )
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -99,21 +137,6 @@ class RaggedBatch(ns.dataloader.Batch):
         for name, values in self.lengths.items():
             if name not in self.data:
                 raise ValueError(f"lengths refers to missing data field {name!r}")
-            if not isinstance(values, torch.Tensor):
-                raise TypeError(
-                    f"lengths[{name!r}] must be a torch.Tensor, "
-                    f"got {type(values).__name__}"
-                )
-            if values.ndim != 1 or values.shape[0] != batch_size:
-                raise ValueError(
-                    f"lengths[{name!r}] must have shape ({batch_size},), "
-                    f"got {tuple(values.shape)}"
-                )
-            if values.dtype != torch.long:
-                raise TypeError(
-                    f"lengths[{name!r}] must have dtype torch.long, got {values.dtype}"
-                )
-
             sample_ndim = self.data[name].ndim - 1
             axis = self.axes[name]
             if not 0 <= axis < sample_ndim:
@@ -121,23 +144,90 @@ class RaggedBatch(ns.dataloader.Batch):
                     f"axis {axis} for {name!r} is invalid for an unbatched "
                     f"{sample_ndim}-dimensional tensor"
                 )
-            padded_length = self.data[name].shape[axis + 1]
-            if torch.any(values < 0) or torch.any(values > padded_length):
+            self._validate_lengths(
+                f"lengths[{name!r}]",
+                values,
+                batch_size,
+                self.data[name].shape[axis + 1],
+            )
+
+        if not isinstance(self.extra_lengths, dict):
+            raise TypeError(
+                "'extra_lengths' needs to be a dict, got: "
+                f"{type(self.extra_lengths).__name__}"
+            )
+        for name, per_axis in self.extra_lengths.items():
+            if name not in self.lengths:
                 raise ValueError(
-                    f"lengths[{name!r}] must be between 0 and {padded_length}"
+                    f"extra_lengths refers to {name!r}, which has no main padded axis"
+                )
+            if not isinstance(per_axis, dict):
+                raise TypeError(
+                    f"extra_lengths[{name!r}] must be a dict, "
+                    f"got {type(per_axis).__name__}"
+                )
+            sample_ndim = self.data[name].ndim - 1
+            for axis, values in per_axis.items():
+                if (
+                    not isinstance(axis, int)
+                    or isinstance(axis, bool)
+                    or not 0 <= axis < sample_ndim
+                    or axis == self.axes[name]
+                ):
+                    raise ValueError(
+                        f"extra axis {axis!r} for {name!r} must be a distinct axis "
+                        f"of an unbatched {sample_ndim}-dimensional tensor"
+                    )
+                self._validate_lengths(
+                    f"extra_lengths[{name!r}][{axis}]",
+                    values,
+                    batch_size,
+                    self.data[name].shape[axis + 1],
                 )
 
-    def valid_mask(self, name: str) -> torch.Tensor:
-        """Return ``True`` at original, non-padding positions for one field."""
+    @staticmethod
+    def _validate_lengths(
+        label: str, values: tp.Any, batch_size: int, padded_length: int
+    ) -> None:
+        if not isinstance(values, torch.Tensor):
+            raise TypeError(
+                f"{label} must be a torch.Tensor, got {type(values).__name__}"
+            )
+        if values.ndim != 1 or values.shape[0] != batch_size:
+            raise ValueError(
+                f"{label} must have shape ({batch_size},), got {tuple(values.shape)}"
+            )
+        if values.dtype != torch.long:
+            raise TypeError(f"{label} must have dtype torch.long, got {values.dtype}")
+        if torch.any(values < 0) or torch.any(values > padded_length):
+            raise ValueError(f"{label} must be between 0 and {padded_length}")
+
+    def valid_mask(self, name: str, axis: int | None = None) -> torch.Tensor:
+        """Return ``True`` at original, non-padding positions for one field.
+
+        ``axis`` selects one padded axis in unbatched coordinates; the default
+        is the main axis recorded in :attr:`lengths`.
+        """
         if name not in self.lengths:
             raise KeyError(f"No variable-length field named {name!r}")
-        max_length = self.data[name].shape[self.axes[name] + 1]
-        positions = torch.arange(max_length, device=self.lengths[name].device)
-        return positions[None, :] < self.lengths[name][:, None]
+        main_axis = self.axes[name]
+        if axis is None:
+            axis = main_axis
+        elif axis < 0:
+            axis += self.data[name].ndim - 1
+        if axis == main_axis:
+            lengths = self.lengths[name]
+        elif axis in self.extra_lengths.get(name, {}):
+            lengths = self.extra_lengths[name][axis]
+        else:
+            raise KeyError(f"Axis {axis} of {name!r} is not a padded axis")
+        max_length = self.data[name].shape[axis + 1]
+        positions = torch.arange(max_length, device=lengths.device)
+        return positions[None, :] < lengths[:, None]
 
-    def padding_mask(self, name: str) -> torch.Tensor:
+    def padding_mask(self, name: str, axis: int | None = None) -> torch.Tensor:
         """Return ``True`` at padding positions for one field."""
-        return ~self.valid_mask(name)
+        return ~self.valid_mask(name, axis)
 
     def to(self, device: str | torch.device) -> "RaggedBatch":
         """Create a ragged batch with tensors moved to ``device``."""
@@ -147,6 +237,10 @@ class RaggedBatch(ns.dataloader.Batch):
             lengths={name: values.to(device) for name, values in self.lengths.items()},
             axes=self.axes,
             metadata={name: list(values) for name, values in self.metadata.items()},
+            extra_lengths={
+                name: {axis: values.to(device) for axis, values in per_axis.items()}
+                for name, per_axis in self.extra_lengths.items()
+            },
         )
 
     def _subselect(self, idx: list[int]) -> "RaggedBatch":
@@ -158,6 +252,10 @@ class RaggedBatch(ns.dataloader.Batch):
             metadata={
                 name: [values[i] for i in idx] for name, values in self.metadata.items()
             },
+            extra_lengths={
+                name: {axis: values[idx] for axis, values in per_axis.items()}
+                for name, per_axis in self.extra_lengths.items()
+            },
         )
 
     def __repr__(self) -> str:
@@ -166,8 +264,15 @@ class RaggedBatch(ns.dataloader.Batch):
             for name, tensor in self.data.items()
         )
         length_ranges = "; ".join(
-            f"{name}: {int(values.min())}-{int(values.max())}"
-            for name, values in self.lengths.items()
+            [
+                f"{name}: {int(values.min())}-{int(values.max())}"
+                for name, values in self.lengths.items()
+            ]
+            + [
+                f"{name} axis {axis}: {int(values.min())}-{int(values.max())}"
+                for name, per_axis in self.extra_lengths.items()
+                for axis, values in per_axis.items()
+            ]
         )
         return (
             f"RaggedBatch({len(self.segments)} segments, {self._duration_str()}, "
@@ -266,6 +371,7 @@ class RaggedCollator:
         data: dict[str, torch.Tensor] = {}
         lengths: dict[str, torch.Tensor] = {}
         axes: dict[str, int] = {}
+        extra_lengths: dict[str, dict[int, torch.Tensor]] = {}
         for name in field_names:
             tensors = [sample.data[name] for sample in samples]
             self._validate_tensors(name, tensors)
@@ -281,7 +387,20 @@ class RaggedCollator:
                 data[name] = torch.stack(tensors, dim=0)
                 continue
 
-            axis = self._normalize_axis(name, spec.axis, tensors[0].ndim)
+            ndim = tensors[0].ndim
+            axis = self._normalize_axis(name, spec.axis, ndim)
+            extra_axes = [
+                self._normalize_axis(name, extra, ndim) for extra in spec.extra_axes
+            ]
+            padded_axes = (axis, *extra_axes)
+            if len(set(padded_axes)) != len(padded_axes):
+                raise ValueError(
+                    f"padding axes for {name!r} name the same axis twice: "
+                    f"{padded_axes}"
+                )
+            allowed = (
+                f"axes {tuple(sorted(padded_axes))}" if extra_axes else f"axis {axis}"
+            )
             reference_shape = tensors[0].shape
             for index, tensor in enumerate(tensors[1:], start=1):
                 incompatible = [
@@ -289,42 +408,53 @@ class RaggedCollator:
                     for dimension, (actual, expected) in enumerate(
                         zip(tensor.shape, reference_shape)
                     )
-                    if dimension != axis and actual != expected
+                    if dimension not in padded_axes and actual != expected
                 ]
                 if incompatible:
                     raise ValueError(
                         f"data[{name!r}] sample {index} has incompatible shape "
-                        f"{tuple(tensor.shape)}; only axis {axis} may differ from "
+                        f"{tuple(tensor.shape)}; only {allowed} may differ from "
                         f"{tuple(reference_shape)}"
                     )
 
-            original_lengths = [tensor.shape[axis] for tensor in tensors]
-            max_length = max(original_lengths)
+            sizes = {
+                padded_axis: [tensor.shape[padded_axis] for tensor in tensors]
+                for padded_axis in padded_axes
+            }
+            padded_shape = list(reference_shape)
+            for padded_axis, axis_sizes in sizes.items():
+                padded_shape[padded_axis] = max(axis_sizes)
             padded = []
-            for tensor, original_length in zip(tensors, original_lengths):
-                if original_length == max_length:
+            for tensor in tensors:
+                if list(tensor.shape) == padded_shape:
                     padded.append(tensor)
                     continue
-                padded_shape = list(tensor.shape)
-                padded_shape[axis] = max_length
                 padded_tensor = torch.full(
                     padded_shape,
                     spec.pad_value,
                     dtype=tensor.dtype,
                     device=tensor.device,
                 )
-                index = [slice(None)] * tensor.ndim
-                index[axis] = slice(0, original_length)
+                index = [slice(None)] * ndim
+                for padded_axis in padded_axes:
+                    index[padded_axis] = slice(0, tensor.shape[padded_axis])
                 padded_tensor[tuple(index)] = tensor
                 padded.append(padded_tensor)
 
             data[name] = torch.stack(padded, dim=0)
             lengths[name] = torch.tensor(
-                original_lengths,
+                sizes[axis],
                 dtype=torch.long,
                 device=tensors[0].device,
             )
             axes[name] = axis
+            if extra_axes:
+                extra_lengths[name] = {
+                    extra: torch.tensor(
+                        sizes[extra], dtype=torch.long, device=tensors[0].device
+                    )
+                    for extra in extra_axes
+                }
 
         return RaggedBatch(
             data=data,
@@ -335,6 +465,7 @@ class RaggedCollator:
                 name: [sample.metadata[name] for sample in samples]
                 for name in metadata_names
             },
+            extra_lengths=extra_lengths,
         )
 
 
