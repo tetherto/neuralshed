@@ -259,6 +259,112 @@ def test_ragged_collator_rejects_an_incompatible_fixed_dimension(tmp_path):
         collator([first, incompatible])
 
 
+def _narrow(sample: SegmentSample) -> SegmentSample:
+    """The same sample with one channel instead of two."""
+    return SegmentSample(
+        data={**sample.data, "spikes": sample.data["spikes"][:1]},
+        segment=sample.segment,
+        metadata=sample.metadata,
+    )
+
+
+def test_ragged_collator_pads_extra_axes_with_lengths_and_masks(tmp_path):
+    dataset = _ragged(_events(tmp_path))
+    wide, narrow = dataset[0], _narrow(dataset[1])  # (2, 10) and (1, 15)
+
+    batch = RaggedCollator(
+        fields={
+            "spikes": PadSpec(axis=-1, extra_axes=(0,)),
+            "target": PadSpec(axis=0),
+        }
+    )([wide, narrow])
+
+    assert batch.data["spikes"].shape == (2, 2, 15)
+    assert batch.lengths["spikes"].tolist() == [10, 15]
+    assert batch.axes["spikes"] == 1
+    assert batch.extra_lengths["spikes"][0].tolist() == [2, 1]
+    assert "target" not in batch.extra_lengths
+    assert torch.equal(batch.data["spikes"][0, :, :10], wide.data["spikes"])
+    assert torch.equal(batch.data["spikes"][1, :1, :], narrow.data["spikes"])
+    assert torch.count_nonzero(batch.data["spikes"][0, :, 10:]) == 0
+    assert torch.count_nonzero(batch.data["spikes"][1, 1:, :]) == 0
+    assert batch.valid_mask("spikes", axis=0).tolist() == [[True, True], [True, False]]
+    assert torch.equal(
+        batch.valid_mask("spikes", axis=-2), batch.valid_mask("spikes", axis=0)
+    )
+    assert torch.equal(batch.valid_mask("spikes", axis=1), batch.valid_mask("spikes"))
+    assert torch.equal(
+        batch.padding_mask("spikes", axis=0), ~batch.valid_mask("spikes", axis=0)
+    )
+    assert "spikes axis 0: 1-2" in repr(batch)
+
+
+def test_ragged_batch_preserves_extra_lengths_on_to_and_select(tmp_path):
+    dataset = _ragged(_events(tmp_path))
+    batch = RaggedCollator(
+        fields={
+            "spikes": PadSpec(axis=-1, extra_axes=(0,)),
+            "target": PadSpec(axis=0),
+        }
+    )([dataset[0], _narrow(dataset[1])])
+
+    moved = batch.to("cpu")
+    assert moved.extra_lengths["spikes"][0].tolist() == [2, 1]
+
+    selected = batch.select(1)
+    assert selected.data["spikes"].shape == (1, 2, 15)
+    assert selected.extra_lengths["spikes"][0].tolist() == [1]
+    assert selected.valid_mask("spikes", axis=0).tolist() == [[True, False]]
+
+
+def test_valid_mask_rejects_an_axis_that_was_not_padded(tmp_path):
+    dataset = _ragged(_events(tmp_path))
+    batch = RaggedCollator(
+        fields={"spikes": PadSpec(axis=-1), "target": PadSpec(axis=0)}
+    )([dataset[0], dataset[1]])
+
+    with pytest.raises(KeyError, match="not a padded axis"):
+        batch.valid_mask("spikes", axis=0)
+
+
+def test_pad_spec_validates_extra_axes(tmp_path):
+    assert PadSpec(axis=-1, extra_axes=[0]).extra_axes == (0,)
+    assert repr(PadSpec(axis=-1)) == "PadSpec(axis=-1, pad_value=0)"
+    with pytest.raises(TypeError, match="tuple of ints"):
+        PadSpec(axis=-1, extra_axes=0)
+    with pytest.raises(TypeError, match="must contain ints"):
+        PadSpec(axis=-1, extra_axes=(True,))
+    with pytest.raises(ValueError, match="must be distinct"):
+        PadSpec(axis=0, extra_axes=(0,))
+
+    # -1 and 1 name the same axis of a 2-D sample; only collation can tell.
+    dataset = _ragged(_events(tmp_path))
+    collator = RaggedCollator(fields={"spikes": PadSpec(axis=-1, extra_axes=(1,))})
+    with pytest.raises(ValueError, match="same axis twice"):
+        collator([dataset[0], dataset[1]])
+
+
+def test_ragged_collator_still_rejects_an_unpadded_axis_that_differs(tmp_path):
+    dataset = _ragged(_events(tmp_path))
+    first, second = dataset[0], dataset[1]
+    # Three-axis samples: (2, 2, 10) and (1, 2, 15). Axes 1 and 2 are padded,
+    # axis 0 is not and differs.
+    stacked = SegmentSample(
+        data={**first.data, "spikes": first.data["spikes"][None].repeat(2, 1, 1)},
+        segment=first.segment,
+        metadata=first.metadata,
+    )
+    single = SegmentSample(
+        data={**second.data, "spikes": second.data["spikes"][None]},
+        segment=second.segment,
+        metadata=second.metadata,
+    )
+
+    collator = RaggedCollator(fields={"spikes": PadSpec(axis=-1, extra_axes=(1,))})
+    with pytest.raises(ValueError, match=r"only axes \(1, 2\) may differ"):
+        collator([stacked, single])
+
+
 def test_metadata_batch_sampler_groups_without_loading_items():
     class MetadataOnlyDataset:
         metadata = pd.DataFrame(
