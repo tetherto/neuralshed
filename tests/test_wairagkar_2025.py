@@ -1,7 +1,6 @@
 """wairagkar_2025 control-experiment reader invariants"""
 
 import datetime as dt
-from pathlib import Path
 
 import numpy as np
 import pytest
@@ -13,12 +12,9 @@ from neuralshed.datasets.wairagkar_2025.control_study import (
     Wairagkar2025ControlExperiment,
 )
 
-#: the two known homes of the release: the utils default (honours
-#: ``NEURALSHED_DATA_ROOT``) and this machine's raw download folder
-_CANDIDATES = (
-    utils.DEFAULT_CONTROL_DIR,
-    Path("/data/data/datasets/wairagkar/t15_control_experiment"),
-)
+
+#: where the release lives: the utils default, which honours ``NEURALSHED_DATA_ROOT``
+_CANDIDATES = (utils.DEFAULT_CONTROL_DIR,)
 
 _SESSION = "t15_day482"
 
