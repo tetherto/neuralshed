@@ -44,6 +44,11 @@ NON_CONVERTIBLE = frozenset(
         # behavioral, carried by the same DenseArrayEvent base
         "px",
         "px/s",
+        "cm",
+        "cm/s",
+        "cm/s^2",
+        "mm",
+        "mm/s",
         "screen_height",
         "screen_height/s",
         "proportion",

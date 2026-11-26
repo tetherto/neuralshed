@@ -109,9 +109,61 @@ class Wairagkar2025Brain2Voice(NeuralshedStudy):
         "Attempted open-vocabulary cued speech by BrainGate2 participant T15 (ALS, severe "
         "dysarthria), 4*64-channel Utah arrays in left ventral precentral gyrus. Pre-binned "
         "spike-band power + threshold crossings (256 ch, 100 Hz) with per-trial sentence "
-        "cues, word/syllable speech timings, and the time-aligned LPCNet acoustic target "
-        "(brain-to-voice). 37 sessions, 8,489 trials (Wairagkar et al. 2025, t15_neural_data)."
+        "cues, word/syllable speech timings, and an LPCNet acoustic target from a "
+        "text-to-speech rendering of the cue, time-aligned to the attempt (brain-to-voice). "
+        "Each trial is the go-period clip only. 37 sessions, 8,489 trials (Wairagkar et "
+        "al. 2025, t15_neural_data)."
     )
+    timeline_descriptions: tp.ClassVar[dict[str, dict[tp.Any, str]]] = {
+        "trial_description": {
+            "Training data": (
+                "In a training trial, T15 attempts to speak an open-vocabulary sentence "
+                "cue. The release ships no synthesized voice for training trials, which "
+                "are what the decoders of later evaluation sessions train on."
+            ),
+            "Training data (50-word vocab)": (
+                "In a 50-word training trial, T15 attempts to speak a cue from a closed "
+                "50-word vocabulary. These trials are from days 25, 193 and 195, and the "
+                "release ships no synthesized voice for them."
+            ),
+            "Evaluation trial": (
+                "In an evaluation trial, a causal decoder trained on all earlier "
+                "sessions synthesizes T15's voice from the neural features in real time "
+                "and plays it through a speaker while T15 attempts to speak the cue. "
+                "The synthesized audio ships with the trial but is not an event."
+            ),
+            "Evaluation trial (preliminary)": (
+                "This trial is from day 110, the first evaluation session, where a "
+                "decoder trained through day 109 synthesizes T15's voice in real time. "
+                "Every trial of this session is also a trial of card_2024."
+            ),
+            "Evaluation trial (mimed speech)": (
+                "In a mimed evaluation trial, T15 articulates the cue silently without "
+                "vocalizing while the decoder synthesizes a voice from the neural "
+                "features in real time."
+            ),
+            "Evaluation trial (free response)": (
+                "In a free-response evaluation trial, T15 answers a question in T15's "
+                "own words while the decoder synthesizes T15's voice in real time. The "
+                "Sentence is a transcript of what T15 said, not a prompt."
+            ),
+            "Evaluation trial (spelling)": (
+                "In a spelling evaluation trial, the cue is a letter sequence such as "
+                "q u i c k, so each Word event holds one letter. All 31 spelling trials "
+                "are from day 186."
+            ),
+        },
+        "benchmark": {
+            "random": (
+                "This trial is one of the 90 evaluation trials drawn at random for the "
+                "authors' open-transcription listener test of the synthesized voice."
+            ),
+            "video": (
+                "This trial is a clip from the paper's videos, whose synthesized voice "
+                "human listeners also scored."
+            ),
+        },
+    }
     requirements: tp.ClassVar[tuple[str, ...]] = ("scipy",)
 
     # 13 trials spanning all seven trial_description values, mimed speech, both benchmark
@@ -189,6 +241,7 @@ class Wairagkar2025Brain2Voice(NeuralshedStudy):
                     trial_description=descr,  # the source's verbatim label
                     task_condition="mimed" if "mimed" in descr.lower() else "attempted",
                     benchmark=benchmark.get(g, ""),
+                    **utils.loop_type_entry(ref.day),
                     trial_id=trial,  # position in the session file
                 )
                 g += 1

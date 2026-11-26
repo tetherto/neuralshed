@@ -40,29 +40,35 @@ DATASET_METADATA = {
     "licence": "CC0-1.0",
     "notes": (
         "Spike-band power is stored in 50 ms bins (20 Hz, 192 channels) as 256 columns, "
-        "of which 192-255 are exactly zero in every released block. Per the "
-        "Supplementary Methods the chain is a 250 Hz digital high-pass, common average "
-        "referencing, then the sum of the squared magnitude per window, so the quantity "
-        "is a squared voltage that is extensive and rebinning must sum rather than "
-        "average. All seven recording days come off the same front-end configuration, "
+        "of which 192-255 are exactly zero in every released block. On "
+        "t5.2023.04.13 channels 0-95 and 96-191 are exchanged relative to every other "
+        "day and utils.py swaps them back. No source states it, so the exchange is "
+        "inferred from the data. Per the "
+        "Supplementary Methods the chain is the amplifier's 0.3 Hz-7.5 kHz analog "
+        "filter at 30 kHz, common average referencing, a 250 Hz digital high-pass, "
+        "then the sum of the squared magnitude per window. The 50 ms "
+        "values sit on the scale of datasets that average, so the sum was divided by a "
+        "fixed count: the quantity is a mean squared voltage and rebinning averages. "
+        "All seven recording days come off the same front-end configuration, "
         "since the release's two later configurations cover the quadcopter sessions "
         "only. The first roughly 81 bins of each block are "
         "spaced 20 ms rather than 50 ms, and they are valid measurements over the "
         "narrower window rather than transients: rescaling them by 50/20 recovers the "
         "following bins (per-channel correlation 0.97). The authors drop the first 80 "
         "before normalizing because the narrower bins bias the per-channel statistics, "
-        "and no trial starts before bin 192 in any case. The finger streams carry six "
+        "and the earliest trial starts at bin 121 (open loop) or 192 (closed loop) in "
+        "any case. The finger streams carry six "
         "columns but only four independent values, "
         "since index duplicates middle and ring duplicates little. Trials strictly "
         "alternate a randomly placed target with a return to the neutral posture, so "
-        "49% of trials are return-to-rest. The released files do not record how many "
-        "degrees of freedom the online decoder emitted, only how many the task cued: on "
+        "49% of trials are return-to-rest. The task stream shows how many degrees of "
+        "freedom the task cued, not how many the online decoder emitted: on "
         "2023-04-06 and 2023-04-13 the authors interleaved 4-DoF and 2-DoF decoders "
-        "driving the same 2-DoF task, and that label survives only in their notebook "
-        "(utils.BLOCK_LABELS). Out of scope: the 20230712 quadcopter block, which holds "
-        "a saved flight path with no clock and no neural data, and the Decoders folders, "
-        "which hold trained network weights and normalization constants rather than "
-        "recordings."
+        "driving the same 2-DoF task, so for the 2-DoF task blocks that count comes "
+        "from their notebook and Decoders folders (utils.DECODER_DOF). Out of scope: "
+        "the 20230712 quadcopter block, which holds a saved flight path with no clock "
+        "and no neural data, and the Decoders folders, which hold trained network "
+        "weights and normalization constants rather than recordings."
     ),
     "subjects": [
         {
@@ -78,8 +84,9 @@ DATASET_METADATA = {
             ],
             "arrays": [
                 # The release does not say which physical array supplies which half of
-                # the channel range, and the channel order has not been checked against
-                # the other T5 datasets (see docs/standardization.md).
+                # the channel range. The data match the other T5 datasets' order, with
+                # t5.2023.04.13's two halves swapped back by utils (see
+                # docs/channel_mapping/t5.md).
                 {
                     "name": "array_1",
                     "hemisphere": "left",
@@ -121,11 +128,13 @@ DATASET_METADATA = {
             "dtype": "float32",
             "description": (
                 "Spike-band power on 192 electrodes, stored under the source's own name "
-                "hlfp (high-frequency LFP). The Supplementary Methods give the chain: a "
-                "250 Hz digital high-pass, common average referencing, then the sum of "
-                "the squared magnitude over each 50 ms window. Summing rather than "
-                "averaging makes the quantity extensive, which the 20 ms bins that open "
-                "every block confirm independently."
+                "hlfp (high-frequency LFP). The Supplementary Methods give the chain: the "
+                "amplifier's 0.3 Hz-7.5 kHz analog filter at 30 kHz, common average "
+                "referencing, a 250 Hz digital high-pass, then the sum of the squared "
+                "magnitude over each 50 ms window, so the band is 250 Hz to 7.5 kHz. The "
+                "values sit on the scale of a mean square, so the sum was divided by a "
+                "fixed count, which the 20 ms bins that open every block confirm by "
+                "sitting at 20/50 of the steady level."
             ),
         },
         {
@@ -139,9 +148,11 @@ DATASET_METADATA = {
             "description": (
                 "Position of the four controlled degrees of freedom of the virtual hand "
                 "(thumb flexion, thumb abduction, index-middle, ring-little) as a "
-                "fraction of the range of motion, 0 fully flexed and 1 fully extended. "
-                "In the closed-loop blocks this is the online decoder's output, which is "
-                "what moved the hand the participant saw."
+                "fraction of the range of motion, 1 fully flexed (abducted for thumb "
+                "abduction) and 0 fully extended (adducted), following the paper's "
+                "Methods; the authors' RunAnalysis.m names 0 flexed. In the closed-loop "
+                "blocks this is the online decoder's output, which is what moved the "
+                "hand the participant saw."
             ),
         },
         {
@@ -163,10 +174,11 @@ DATASET_METADATA = {
             "category": "categorical",
             "event_class": "Stimulus",
             "description": (
-                "Appearance of a new target posture on the screen, one per trial. "
-                "Closed-loop trials alternate a randomly placed target with a return to "
-                "the neutral posture; open-loop trials cue one of nine postures (rest, "
-                "or one degree of freedom driven fully flexed or fully extended)."
+                "Cued posture of an open-loop go phase, over the 2 s in which the "
+                "virtual fingers move to it: one of nine postures (rest, or one degree "
+                "of freedom driven to either end of its range) or the return from "
+                "one. Closed-loop trials have no Stimulus row, since the target appears "
+                "when the trial starts and the Action carries it."
             ),
         },
         {
@@ -177,8 +189,20 @@ DATASET_METADATA = {
             "description": (
                 "Attempted finger movement toward the cued posture. In the closed-loop "
                 "blocks it spans from the appearance of a target to the moment the "
-                "participant had held the hand inside it for 500 ms; in the open-loop "
-                "blocks it is the 2 s go phase that follows a 1 s preparation phase."
+                "decoded hand had held every cued degree of freedom inside it for "
+                "500 ms, or to the 10 s timeout, and success says which; in the "
+                "open-loop blocks it is the 2 s go phase that follows 1 s with the "
+                "fingers still."
+            ),
+        },
+        {
+            "name": "rest",
+            "category": "categorical",
+            "event_class": "Action",
+            "task_condition": "na",
+            "description": (
+                "An open-loop go phase that starts and ends at the neutral posture "
+                "(action_kind 'rest', code 0)."
             ),
         },
     ],
@@ -187,6 +211,8 @@ DATASET_METADATA = {
 
 def sessions() -> list[dict]:
     """One row per released recording day, derived from the downloaded block files."""
+    from neuralshed.datasets import participants
+
     from . import utils
 
     rows = []
@@ -198,22 +224,22 @@ def sessions() -> list[dict]:
                 "label": label,
                 "subject_label": "T5",
                 "date": date.isoformat(),
-                "post_implant_day": (date - _implant_date()).days,
+                "post_implant_day": participants.post_implant_day(
+                    "braingate2/T5", date.isoformat()
+                ),
                 "n_trials": sum(
-                    len(utils.trial_windows(block))
+                    (
+                        len(utils.trial_windows(block))
+                        if block.kind == utils.KIND_CLOSED_LOOP
+                        else len(utils.cue_windows(block))
+                    )
                     for block in blocks
-                    if block.kind == utils.KIND_CLOSED_LOOP
+                    if block.kind != utils.KIND_QUADCOPTER
                 ),
                 "task": ", ".join(tasks),
             }
         )
     return rows
-
-
-def _implant_date():
-    from neuralshed.datasets import participants
-
-    return participants.implant_date("braingate2/T5")
 
 
 def get_metadata() -> dict:

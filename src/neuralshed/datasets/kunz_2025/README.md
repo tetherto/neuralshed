@@ -45,7 +45,7 @@ The eleven task types span attempted, inner and perceived speech, along with cog
 | `seqRecallUninstructed3ElementLines` | T12, T16 | draw the cued line sequence with a stylus (T12) or attempt to draw it (T16). T12's file holds 49 cues: 32 three-segment sequences including diagonals, 16 two-segment sequences and rest. The paper analyses the 32 three-segment cues |
 | `seqRecallVerbalMemory` | T12, T16 | hold the sequence in inner speech over the delay, then draw it |
 | `seqRecallVisualMemory` | T12, T16 | hold the sequence as a visual image over the delay, then draw it |
-| `seqRecallSpeech` | T12, T16 | say the direction sequence aloud, the cue played as audio to T12 and shown to T16 |
+| `seqRecallSpeech` | T12, T16 | say the cued directions aloud: a three-direction sequence played as audio to T12, one direction word shown to T16 |
 
 **Sentence strategies.** For the inner-speech sentences each participant chose the form of inner speech they could perform most consistently. T12 used motoric inner speech (sentence and keyword sessions), T16 first-person auditory inner speech, and T15 motoric inner speech on 2024-03-03 and a hybrid of motoric imagery and imagined listening in the two 125k sessions (2024-12-15 and 2025-01-05). The Study records the strategy as `behavior` on each `Sentence` row.
 
@@ -129,7 +129,7 @@ Every folder includes its own field reference (`<folder>_readme.txt` in the word
 - One T12 interleaved file (`t12.2024.04.11`) stores a byte-identical copy of `binnedTX` as `spikePow`. Its `BandPower` rows are emitted with `valid=False`.
 - Every stream is checked against its declared normalization on load (raw counts are non-negative integers, mean-subtracted streams are centred), and a mismatch raises.
 
-## Study, timelines and events
+## Study, timelines and Events
 
 `study.py` defines `Kunz2025InnerSpeech`. **The Study emits one timeline per recorded block, for 243 timelines in total.** Because neural activity between blocks was not recorded, each timeline represents the largest span known to be continuous.
 
@@ -191,9 +191,9 @@ The in-file `i` (inferior) and `s` (superior) prefixes map to `ventral_` and `do
 
 The December 2024 T12 files come from a different rig. T12's sessions before December 2024 ran on Simulink Real-Time with task software in the Psychophysics Toolbox, and T12 from December 2024, T15, T16 and T17 ran on BRAND (STAR Methods, Data collection rig). The December T12 files therefore carry the BRAND configuration's T15 labels (`M1`, `55b`), and the chitty `_eval` file uses BRAND's 25 ms bin. Per-electrode statistics indicate that they contain the same four arrays in the same column positions as T12's earlier sequence-recall files, so the Study treats the labels as a relabel.
 
-The ventral-before-dorsal order of T12's area 44 pair is inferred from the `willet_2023` ordering convention and a docstring in the authors' Python code (`inner_speech/analysis/subfunctions/utils.py`). No source states it directly, and the same docstring lists the 6v pair in the reverse of the in-file labels, the authors' MATLAB channel sets and the Study layout, so it is weak support.
+The ventral-before-dorsal order of T12's area 44 pair is inferred. No source states it directly. Channel correlations against `willet_2023`, whose array layout is documented, prefer it in 21 of 22 tests ([T12 channel correspondence](../../../../docs/channel_mapping/t12.md)), and it matches the inferior-first order of the authors' `unscrambleChans`. A docstring in the authors' Python code (`inner_speech/analysis/subfunctions/utils.py`) also lists it, but the same docstring lists the 6v pair in the reverse of the in-file labels, the authors' MATLAB channel sets and the Study layout, so it is weak support.
 
-T17's files label columns 128-255 as a single `55b` group. Channel correlations of spike-band power split it at column 192 (62 of 64 and 46 of 64 channels correlate best with their own half), so the Study emits two arrays. The assignment of `ventral_55b` to columns 128-191 and `dorsal_55b` to 192-255 is assumed from `jude_2026_speech`'s order for the same participant, the same ventral-then-dorsal order as the 6v pair in both datasets. No source publishes it.
+T17's files label columns 128-255 as a single `55b` group. Channel correlations of spike-band power split it at column 192 (62 of 64 and 46 of 64 channels correlate best with their own half), so the Study emits two arrays. The assignment of `ventral_55b` to columns 128-191 and `dorsal_55b` to 192-255 follows `jude_2026_speech`'s order for the same participant, the same ventral-then-dorsal order as the 6v pair in both datasets. No source publishes it. Channel correlations against `jude_2026_speech` and `jude_2026_typing` support it as a candidate in most of 23 sessions ([T17 channel correspondence](../../../../docs/channel_mapping/t17.md)).
 
 ### Correspondence with other datasets
 
@@ -201,12 +201,12 @@ The four participants appear in six other datasets of this corpus. Pool by array
 
 | Participant | Other datasets | What is established |
 |---|---|---|
-| T12 | [`willet_2023`](../willet_2023/README.md) | Same implant, array names, areas and ontology IDs. `willet_2023` emits `dorsal_6v, ventral_6v, dorsal_44, ventral_44`, and this Study emits the ventral array first in each pair. No electrode-level mapping is established |
-| T15 | [`card_2024`](../card_2024/README.md), [`wairagkar_2025`](../wairagkar_2025/README.md), [`singer_2025`](../singer_2025/README.md) | Same implant, array names and the same array per block of 64 columns (`ventral_6v`, `4`, `55b`, `dorsal_6v`). No source states an electrode-level mapping. The 200 trials of `t15.2024.03.03_attempted_50words` are also `train` trials of `card_2024`, see below |
+| T12 | [`willet_2023`](../willet_2023/README.md) | Same implant, array names, areas and ontology IDs. Both Studies emit `ventral_6v, dorsal_6v, ventral_44, dorsal_44`, and `willet_2023` orders each array as the authors' `unscrambleChans`. Channel correlations support the same electrode per column as a candidate. For `ventral_44` the grid order is a convention the data do not confirm. See [T12 channel correspondence](../../../../docs/channel_mapping/t12.md) |
+| T15 | [`card_2024`](../card_2024/README.md), [`wairagkar_2025`](../wairagkar_2025/README.md), [`singer_2025`](../singer_2025/README.md) | Same implant, array names and the same array per block of 64 columns (`ventral_6v`, `4`, `55b`, `dorsal_6v`). No source states an electrode-level mapping. The 200 trials of `t15.2024.03.03_attempted_50words` are also `train` trials of `card_2024`, see below. See [T15 channel correspondence](../../../../docs/channel_mapping/t15.md) |
 | T16 | none | |
-| T17 | [`jude_2026_speech`](../jude_2026_speech/README.md), [`jude_2026_typing`](../jude_2026_typing/README.md) | Same implant. Those Studies emit six arrays (6v, 55b, 6d pairs), this release holds the 6v and 55b pairs only. No published correspondence between the column orders |
+| T17 | [`jude_2026_speech`](../jude_2026_speech/README.md), [`jude_2026_typing`](../jude_2026_typing/README.md) | Same implant. Those Studies emit six arrays (6v, 55b, 6d pairs), this release holds the 6v and 55b pairs only. No published correspondence. Channel correlations support the same array per 64-column block as a candidate, see [T17 channel correspondence](../../../../docs/channel_mapping/t17.md) |
 
-**Trials shared with `card_2024`.** The 200 attempted-speech trials of `t15.2024.03.03_attempted_50words` are 200 of the 219 `train` trials of `card_2024` session `t15.2024.03.03`, released there as z-scored 20 ms clips that start about 1 s before the go cue. Each pair has the same cue, and its threshold crossings, rebinned to 20 ms, correlate at 0.97 or more, against at most 0.12 for other trials. The imagined-speech files of that day are not in `card_2024`. A collection that pools the two datasets holds these trials twice, so keep one copy or assign both to the same split.
+**Trials shared with `card_2024`.** The 200 attempted-speech trials of `t15.2024.03.03_attempted_50words` are 200 of the 219 `train` trials of `card_2024` session `t15.2024.03.03`, released there as z-scored 20 ms clips that start about 1 s before the go cue (at the go cue on the first trial of a block). Each pair has the same cue, and every column, rebinned to 20 ms, correlates at 1.00 with the same column of the `card_2024` clip. The imagined-speech files of that day and the 2024-06-14 file share no trial with `card_2024`. A collection that pools the two datasets holds these trials twice, so keep one copy or assign both to the same split. [t15_repeated_trials.md](../../../../docs/channel_mapping/t15_repeated_trials.md) describes how to find the pairs.
 
 **Shared sentence prompts with `willet_2023`.** The three 50-word `_eval` files (T12, T15, T16) use the fixed 50-sentence evaluation set of Moses et al. (2021), which `willet_2023` also uses. 152 kunz `Sentence` rows carry one of those 50 prompts (50 per participant, and 2 more in the first block of T12's file), and 1,076 `willet_2023` rows over 21 sessions carry them too. Across all sentences, 303 distinct texts (431 kunz rows) are shared between the two datasets. The neural data are distinct, but a collection that trains on one dataset and evaluates on the other has seen the target sentences, so a pooled split must group prompts across datasets (strip the keyword prefix first).
 
@@ -258,7 +258,7 @@ The files are the authority for the Study. Where the references say otherwise:
 | Spike-band power | the paper, a sum of squared voltages per bin | a mean per bin, as the deposit readmes say | the files |
 | `upper_freq=5000` | Kunz et al. give only the 250 Hz high-pass. Deo et al. (2026) band-pass T12 at 250-4,900 Hz and T15 and T17 at 250-5,000 Hz, and high-pass T16 at 250 Hz | | 5000, the corpus convention for these rigs |
 
-## Files in this folder
+## Files
 
 - `__init__.py`: package marker.
 - `metadata.py`: `DATASET_METADATA` (subjects, arrays, events) + `sessions()` + `get_metadata()`, validates against the DB schema.

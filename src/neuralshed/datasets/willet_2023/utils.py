@@ -3,7 +3,7 @@
 Reads the raw MATLAB ``.mat`` files distributed on Dryad
 (doi:10.5061/dryad.x69p8czpq) for subject T12. The curated scope is the *sentence-production* data
 (``sentences/*.mat``). Every function that touches the drive takes the study folder
-``root`` (``source_root()`` on the data drive, ``Study.path`` inside the Study);
+``root`` (``default_data_dir()`` on the data drive, ``Study.path`` inside the Study);
 ``list_sessions`` and ``session_summary`` also scan the out-of-scope directories.
 
 All ``.mat`` files are loaded with ``scipy.io.loadmat(..., simplify_cells=True)``,
@@ -22,7 +22,7 @@ from neuralshed.text import PhonemeTable
 STUDY_FOLDER = "Willett2023Sentences"
 
 
-def source_root() -> Path:
+def default_data_dir() -> Path:
     """Study folder on the data drive, ``<NEURALSHED_DATA_ROOT>/willet_2023/data/Willett2023Sentences``.
 
     The Study base appends the class-name subfolder to its ``path``, so this is also
@@ -112,17 +112,20 @@ ARRAY_DESCRIPTIONS = {
     "ventral_44": "Area 44 (inferior frontal gyrus, Broca's area), inferior array.",
 }
 
-# Order of the arrays in the Study's neural rows.
-ARRAY_ORDER = tuple(ARRAY_GRIDS)
+# Order of the arrays in the Study's neural rows, inferior array first in each area.
+ARRAY_ORDER = ("ventral_6v", "dorsal_6v", "ventral_44", "dorsal_44")
 
-# File columns of each array, ascending.
+# File columns of each array in grid order, the order of the authors' unscrambleChans
+# (speechBCI AnalysisExamples/analysis.py): down each grid column, anterior column
+# first, reversed for area 44.
 ARRAY_CHANNELS: dict[str, np.ndarray] = {
-    name: np.sort(grid.ravel()) for name, grid in ARRAY_GRIDS.items()
+    name: grid.T.ravel()[::-1] if name.endswith("_44") else grid.T.ravel()
+    for name, grid in ARRAY_GRIDS.items()
 }
 
-# File column of each array-order column: the arrays in ARRAY_ORDER, each with its
-# file columns ascending, so every array is one contiguous block of 64 columns in
-# array order (see STUDY_ARRAY_SLICES).
+# File column of each array-order column: the arrays in ARRAY_ORDER, each in grid
+# order, so every array is one contiguous block of 64 columns in array order (see
+# STUDY_ARRAY_SLICES).
 CHANNEL_ORDER = np.concatenate([ARRAY_CHANNELS[name] for name in ARRAY_ORDER])
 
 STUDY_ARRAY_SLICES = {
@@ -342,7 +345,7 @@ def get_array_signal(data: dict, signal: str, array: str) -> np.ndarray:
     Returns
     -------
     numpy.ndarray
-        ``(T, 64)`` columns of that array, in ascending file column order.
+        ``(T, 64)`` columns of that array, in grid order (:data:`ARRAY_CHANNELS`).
     """
     if signal not in SIGNAL_TYPES:
         raise ValueError(
@@ -449,11 +452,14 @@ def build_cue_phonemes(
 ) -> PhonemeTable:
     """Regenerate ``assets/cue_phonemes.json`` (or ``path``) over every sentence cue of
     the 24 ``sentences/*.mat`` files under the study folder ``root`` (default
-    :func:`source_root`), stripped as the Study emits them. Needs the ``g2p`` extra."""
-    root = Path(root) if root is not None else source_root()
+    :func:`default_data_dir`), stripped as the Study emits them. Needs the ``g2p`` extra.
+    """
+    root = Path(root) if root is not None else default_data_dir()
     cues: set[str] = set()
     for session in list_sessions(root):
-        texts = load_variables(sentences_file(root, session), ["sentences"])["sentences"]
+        texts = load_variables(sentences_file(root, session), ["sentences"])[
+            "sentences"
+        ]
         cues.update(t for t in (str(s).strip() for s in np.atleast_1d(texts)) if t)
     return PhonemeTable.build(
         cues,
@@ -461,7 +467,7 @@ def build_cue_phonemes(
         description="Dictionary pronunciation of each sentence cue, not a measurement "
         "of what T12 produced. g2p_en over the cue with punctuation stripped, stress "
         "removed, '|' at every word boundary and at the end; contractions the "
-        "transcript writes with a space before the apostrophe (\"I 'll\") stay split "
+        'transcript writes with a space before the apostrophe ("I \'ll") stay split '
         "(join_split_apostrophes=false). Symbols are PhonemeVocab v1 "
         "(neuralshed.text.ARPABET_V1).",
         join_split_apostrophes=False,

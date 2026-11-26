@@ -1,13 +1,20 @@
 import os
 from pathlib import Path
 
-# Default (overridable via ``NEURALSHED_DATA_ROOT``)
-DEFAULT_DATA_ROOT = "/Volumes/seagate_0/tether/datasets"
+from neuralshed.config import DATA_ROOT_HELP, DATA_ROOT_VAR
 
 
 def data_root() -> Path:
     """Return the root directory holding all per-dataset data folders."""
-    return Path(os.environ.get("NEURALSHED_DATA_ROOT", DEFAULT_DATA_ROOT))
+    root = os.environ.get(DATA_ROOT_VAR)
+    if not root:
+        raise RuntimeError(f"{DATA_ROOT_VAR} is not set. {DATA_ROOT_HELP}")
+    return Path(root)
+
+
+def data_root_is_set() -> bool:
+    """Whether ``NEURALSHED_DATA_ROOT`` is set, for datasets that can stream without it."""
+    return bool(os.environ.get(DATA_ROOT_VAR))
 
 
 def dataset_dir(name: str, must_exist: bool = False) -> Path:
@@ -22,14 +29,12 @@ def dataset_dir(name: str, must_exist: bool = False) -> Path:
         Dataset folder name, e.g. ``"willet_2021"``.
     must_exist : bool, optional
         If True, raise a clear error when the directory is missing (typically
-        the external drive is not mounted, or ``NEURALSHED_DATA_ROOT`` is unset/wrong).
+        the external drive is not mounted, or ``NEURALSHED_DATA_ROOT`` is wrong).
     """
     d = data_root() / name
     if must_exist and not d.exists():
         raise FileNotFoundError(
             f"Data directory not found: {d}\n"
-            f"Is the data drive mounted? Current data root is '{data_root()}'. "
-            f"Set the NEURALSHED_DATA_ROOT environment variable to override "
-            f"(default: {DEFAULT_DATA_ROOT})."
+            f"Is the data drive mounted? {DATA_ROOT_VAR} is '{data_root()}'."
         )
     return d

@@ -11,9 +11,9 @@ from neuralshed.datasets.wairagkar_2025 import utils as wairagkar_utils
 from neuralshed.datasets.willet_2023 import utils as willet_utils
 
 _DATASETS = {
-    "willet_2023": (willet_utils, willet_utils.source_root()),
-    "kunz_2025": (kunz_utils, kunz_utils.DATA_DIR),
-    "wairagkar_2025": (wairagkar_utils, wairagkar_utils.DEFAULT_CONTROL_DIR),
+    "willet_2023": (willet_utils, willet_utils.default_data_dir()),
+    "kunz_2025": (kunz_utils, kunz_utils.default_data_dir()),
+    "wairagkar_2025": (wairagkar_utils, wairagkar_utils.default_control_dir()),
 }
 
 

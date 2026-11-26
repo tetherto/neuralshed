@@ -8,10 +8,10 @@ version = "0.1.0"
 description = "Exploration and scaffolding for the neuralshed project, built on the neuroai stack."
 requires-python = ">=3.12"   # neuroai requires Python 3.12+
 dependencies = [
-    "neuralset[tutorials]",
-    "neuralfetch",
-    "neuraltrain",
-    "neuralbench",
+    "neuralset[tutorials]>=0.4.0",
+    "neuralfetch>=0.4.0",
+    "neuraltrain>=0.4.0",
+    "neuralbench>=0.4.0",
     "requests",   
     "scipy",      
     "pynwb",

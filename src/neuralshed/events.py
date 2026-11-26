@@ -4,6 +4,7 @@ import numpy as np
 
 from neuralset.base import StrCast
 from neuralset.events import etypes
+from pydantic import PositiveFloat
 
 # ===========================================================================
 # Language
@@ -266,9 +267,9 @@ class DecodedCursorVelocitySeries(LinearVelocitySeries):
     """Velocity an online decoder commanded for the cursor, as the source published it.
 
     A sibling of `CursorVelocitySeries` rather than the same type, because the two are not
-    the same quantity wherever both exist: in `karpowicz_2025` the cursor moves about twice
-    as far per bin as the commanded velocity says and tracks it only loosely (correlation
-    0.66 within trials). Keeping the qualifier on this one means a stream that came out of a
+    the same quantity wherever both exist: in `karpowicz_2025` the cursor follows the
+    command inside movements but not while the task holds it at the centre or recentres
+    it. Keeping the qualifier on this one means a stream that came out of a
     decoder can never be mistaken for a measurement.
     """
 
@@ -319,8 +320,52 @@ class AcousticFeatures(BehavioralSeries):
 
 
 # ===========================================================================
+# Masks
+# ===========================================================================
+
+
+class BinaryMask(DenseArrayEvent):
+    """Per-sample True/False flags, `(n_rows, n_samples)` at `frequency` Hz, e.g. the bins
+    a benchmark scores or the samples an artifact covers. Declare `unit="binary"`.
+
+    `true_means`
+        what True marks, in the source's terms (`"scored"`, `"valid"`, `"artifact"`).
+        Required, since a mask read with the wrong polarity selects the wrong samples.
+    `dims`
+        optional row names when there are several masks (e.g. one per channel); its
+        length must match `n_features` when set.
+    """
+
+    true_means: str
+    dims: tuple[str, ...] = ()
+
+    def model_post_init(self, log__: tp.Any) -> None:
+        if not self.true_means:
+            raise ValueError(f"{type(self).__name__}.true_means must be non-empty")
+        if self.dims and len(self.dims) != self.n_features:
+            raise ValueError(
+                f"{type(self).__name__}.n_features={self.n_features} does not match "
+                f"len(dims)={len(self.dims)}"
+            )
+        super().model_post_init(log__)
+
+    def read(self) -> np.ndarray:
+        """Return the `(n_rows, n_samples)` bool array."""
+        data = super().read()
+        if not np.isin(data, (0, 1)).all():
+            raise ValueError(f"{type(self).__name__} holds values other than 0 and 1")
+        return data.astype(bool)
+
+
+# ===========================================================================
 # Inter-trial marker
 # ===========================================================================
+
+
+class ControlMode(etypes.CategoricalEvent):
+    duration: PositiveFloat
+    loop_type: tp.Literal["open", "assisted", "closed"]
+    decoder: str
 
 
 class Intertrial(etypes.CategoricalEvent):
@@ -331,6 +376,20 @@ class Intertrial(etypes.CategoricalEvent):
 
     `description`
         optional human-readable note, for provenance.
+    """
+
+    description: str = ""
+
+
+class AutoMovement(etypes.CategoricalEvent):
+    """A movement the task software makes on its own, with no cue and nothing for the
+    participant to attempt, e.g. snapping a virtual hand onto an object or resetting a
+    cursor to center.
+
+    A time-span marker like `Intertrial`, with no `code`: there is no intention to decode.
+
+    `description`
+        the source's name for the movement, e.g. ``"SnapTo"``.
     """
 
     description: str = ""
@@ -361,5 +420,8 @@ __all__ = [
     "ClickAssistSeries",
     "ClickStateSeries",
     "AcousticFeatures",
+    "ControlMode",
+    "BinaryMask",
     "Intertrial",
+    "AutoMovement",
 ]

@@ -22,9 +22,10 @@ and one ``Sentence`` spanning the go period.
 The neural rows are in array order, not file order. The source matrices interleave
 the four arrays (only the two superior arrays are contiguous), so ``_load_binned``
 permutes the 256 columns with ``utils.CHANNEL_ORDER`` into one contiguous block of
-64 per array, in the order ``utils.ARRAY_ORDER`` (6v superior, 6v inferior, 44
-superior, 44 inferior), which is the layout the catalog's ``channel_start`` /
-``channel_stop`` describe.
+64 per array, in the order ``utils.ARRAY_ORDER`` (6v inferior, 6v superior, 44
+inferior, 44 superior), each array in the grid order of the authors'
+``unscrambleChans``. This is the layout the catalog's ``channel_start`` /
+``channel_stop`` describe, and the one kunz_2025 uses for T12.
 
 Scope is sentences only (see ``datasets/willet_2023/README.md``): the
 ``diagnosticBlocks``, ``tuningTasks`` and ``competitionData`` directories and every
@@ -120,6 +121,36 @@ _TRIAL_VARIABLES = [
     "blockNum",
 ]
 
+# role of each session, supplement Table 2
+_SESSION_ROLES = {
+    "t12.2022.04.28": "initial training day 1",
+    "t12.2022.05.05": "initial training day 2",
+    "t12.2022.05.17": "initial training day 3",
+    "t12.2022.05.19": "initial training day 4",
+    "t12.2022.05.24": "real-time pilot day 1",
+    "t12.2022.05.26": "real-time pilot day 2",
+    "t12.2022.06.02": "real-time pilot day 3",
+    "t12.2022.06.07": "real-time pilot day 4",
+    "t12.2022.06.14": "real-time pilot day 5",
+    "t12.2022.06.16": "real-time pilot day 6",
+    "t12.2022.06.21": "real-time pilot day 7",
+    "t12.2022.06.23": "real-time pilot day 8",
+    "t12.2022.06.28": "real-time pilot day 9",
+    "t12.2022.07.05": "real-time pilot day 10",
+    "t12.2022.07.14": "real-time pilot day 11",
+    "t12.2022.07.21": "vocal evaluation day 1",
+    "t12.2022.07.27": "vocal evaluation day 2",
+    "t12.2022.07.29": (
+        "evaluation day cut short by an equipment failure, training blocks only"
+    ),
+    "t12.2022.08.02": "vocal evaluation day 3",
+    "t12.2022.08.11": "vocal evaluation day 4",
+    "t12.2022.08.13": "vocal evaluation day 5",
+    "t12.2022.08.18": "silent evaluation day 1",
+    "t12.2022.08.23": "silent evaluation day 2",
+    "t12.2022.08.25": "silent evaluation day 3",
+}
+
 
 class Willett2023Sentences(NeuralshedStudy):
     """Willett et al. 2023 speech neuroprosthesis, attempted sentence production (T12).
@@ -159,6 +190,62 @@ class Willett2023Sentences(NeuralshedStudy):
         "power (256 ch, 50 Hz) "
         "with per-trial sentence cues (Willett et al. 2023, sentences subset)."
     )
+    timeline_descriptions: tp.ClassVar[dict[str, dict[tp.Any, str]]] = {
+        "block_type": {
+            "OL Open WebText": (
+                "In this block T12 attempts to speak sentences from Open WebText with "
+                "no real-time decoder. These blocks make up the four initial training "
+                "days, 20 trials each."
+            ),
+            "OL Switchboard": (
+                "In this block T12 attempts to speak sentences from the Switchboard "
+                "corpus with no real-time decoder. These are the training blocks of "
+                "every day after the initial training days."
+            ),
+            "OL Switchboard Repeat": (
+                "In this block T12 attempts to speak 40 Switchboard sentences with no "
+                "real-time decoder."
+            ),
+            "OL Chang": (
+                "In this block T12 attempts to speak sentences from the fixed "
+                "50-sentence set of Moses et al. 2021 with no real-time decoder. No "
+                "decoder is trained on this set."
+            ),
+            "CL Switchboard Stage 1": (
+                "In this block T12 attempts to speak Switchboard sentences while the "
+                "day's first decoder runs in real time. On the evaluation days it is "
+                "trained on that day's open-loop blocks and all prior sessions."
+            ),
+            "CL Switchboard Stage 1 Repeat": (
+                "In this block T12 attempts to speak a fixed set of 40 Switchboard "
+                "sentences while the day's first decoder runs in real time. The same "
+                "set is used on 06.02 (25 of them), 06.07 and 06.14."
+            ),
+            "CL Switchboard Stage 2": (
+                "In this block T12 attempts to speak Switchboard sentences while a "
+                "retrained decoder runs in real time. On the evaluation days it is "
+                "retrained with the day's Stage 1 closed-loop blocks added."
+            ),
+            "CL Chang Stage 1": (
+                "In this block T12 attempts to speak sentences from the fixed "
+                "50-sentence set of Moses et al. 2021 while the day's first decoder "
+                "runs in real time. No decoder is trained on this set."
+            ),
+            "CL Chang Stage 2": (
+                "In this block T12 attempts to speak sentences from the fixed "
+                "50-sentence set of Moses et al. 2021 while a retrained decoder runs in "
+                "real time. On the evaluation days it is retrained with the day's "
+                "Stage 1 closed-loop blocks added. No decoder is trained on this set."
+            ),
+        },
+        "task_condition": {
+            "attempted": "In this session T12 vocalizes while attempting to speak.",
+            "mimed": "In this session T12 mouths the sentences without vocalizing.",
+        },
+        "session": {
+            session: f"Session: {role}." for session, role in _SESSION_ROLES.items()
+        },
+    }
     requirements: tp.ClassVar[tuple[str, ...]] = ("scipy",)
 
     _info: tp.ClassVar[study.StudyInfo] = study.StudyInfo(

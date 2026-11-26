@@ -40,24 +40,36 @@ ARRAY_ORDER = ("ventral_6v", "4", "55b", "dorsal_6v")  # order of the 256-wide a
 NEURAL_BIN_SIZE_MS = 10  # 10 ms non-overlapping bins
 FS_NEURAL = 100  # Hz (neural feature sampling rate)
 
+# Wairagkar et al. 2025, Methods: "After the initial eight research sessions with a mix of
+# open-loop and closed-loop blocks, all cued sentence trials in the rest of the sessions
+# were conducted with either closed-loop voice synthesis, closed-loop text decoding or
+# both." The eighth session is post-implant day 48. Timelines up to that day carry no
+# loop_type.
+LAST_MIXED_LOOP_DAY = 48
+
 # LPCNet acoustic target: 18 Bark-freq cepstral coefficients + 2 pitch/voicing features.
 LPCNET_FEATURE_DIM = 20
 LPCNET_DIMS = tuple(f"bfcc_{i}" for i in range(18)) + ("pitch_period", "pitch_corr")
 SYNTH_AUDIO_FS = 16000  # Hz (closed-loop synthesized voice; eval sessions only)
 
+STUDY_FOLDER = "Wairagkar2025Brain2Voice"
 DATA_SUBDIR = "t15_neural_data"
+CONTROL_SUBDIR = "t15_control_experiment"
+
+
 # Data lives under the Study's class-name folder (the Study base appends it to `path`),
 # so utils and the Study resolve the same location (card_2024 / kunz_2025 convention).
-DEFAULT_DATA_DIR = (
-    dataset_dir("wairagkar_2025") / "data" / "Wairagkar2025Brain2Voice" / DATA_SUBDIR
-)
+def default_data_dir() -> Path:
+    """This dataset's data folder under ``NEURALSHED_DATA_ROOT``."""
+    return dataset_dir("wairagkar_2025") / "data" / STUDY_FOLDER / DATA_SUBDIR
+
 
 # The control release arrives inside the *main* study's download folder (one
 # Dryad download, two subfolders), hence the Wairagkar2025Brain2Voice parent.
-CONTROL_SUBDIR = "t15_control_experiment"
-DEFAULT_CONTROL_DIR = (
-    dataset_dir("wairagkar_2025") / "data" / "Wairagkar2025Brain2Voice" / CONTROL_SUBDIR
-)
+def default_control_dir() -> Path:
+    """Control-experiment folder under ``NEURALSHED_DATA_ROOT``."""
+    return dataset_dir("wairagkar_2025") / "data" / STUDY_FOLDER / CONTROL_SUBDIR
+
 
 _DAY_RE = re.compile(r"t15_day(?P<day>\d+)$")
 _DECODER_RE = re.compile(r"brain2voice_t15_day(?P<day>\d+)\.h5$")
@@ -131,8 +143,9 @@ class SessionRef:
         return self.decoder_path is not None
 
 
-def list_sessions(data_dir: str | Path = DEFAULT_DATA_DIR) -> list[SessionRef]:
+def list_sessions(data_dir: str | Path | None = None) -> list[SessionRef]:
     """All session folders, sorted by post-implant day."""
+    data_dir = default_data_dir() if data_dir is None else data_dir
     data_dir = Path(data_dir)
     out = []
     for d in data_dir.iterdir():
@@ -142,12 +155,13 @@ def list_sessions(data_dir: str | Path = DEFAULT_DATA_DIR) -> list[SessionRef]:
     return sorted(out, key=lambda s: s.day)
 
 
-def load_test_idx(data_dir: str | Path = DEFAULT_DATA_DIR) -> dict:
+def load_test_idx(data_dir: str | Path | None = None) -> dict:
     """Benchmark trial indices (global, 0-based, sorted-day order).
 
     Returns ``{"random": ndarray, "video": ndarray}`` — the human-listener intelligibility
     test set and the paper's video-example trials.
     """
+    data_dir = default_data_dir() if data_dir is None else data_dir
     m = sio.loadmat(str(Path(data_dir) / "test_idx.mat"), squeeze_me=True)
     return {
         "random": np.atleast_1d(m["random_test_idx"]).astype(int),
@@ -233,6 +247,11 @@ def split_of(trial_description: str) -> str:
     return "eval" if "evaluation" in trial_description.lower() else "train"
 
 
+def loop_type_entry(post_implant_day: int) -> dict[str, str]:
+    """``{"loop_type": "closed"}`` after the eighth session, empty before it."""
+    return {"loop_type": "closed"} if post_implant_day > LAST_MIXED_LOOP_DAY else {}
+
+
 # assets/cue_phonemes.json: cue text -> ARPAbet target for the 240 cues of the
 # control experiment, which ``control_study.Wairagkar2025ControlExperiment``
 # attaches to its Sentence rows. g2p_en runs on each word of the cue on its own,
@@ -243,12 +262,15 @@ CUE_PHONEMES = PhonemeTable(
 
 
 def build_cue_phonemes(
-    data_dir: str | Path = DEFAULT_CONTROL_DIR, path: str | Path | None = None
+    data_dir: str | Path | None = None, path: str | Path | None = None
 ) -> PhonemeTable:
     """Regenerate ``assets/cue_phonemes.json`` (or ``path``) over every cue of the
     control-experiment block files in ``data_dir``, stripped as the Study emits them.
     Needs the ``g2p`` extra."""
-    cues = {s for ref in list_control_blocks(data_dir) for s in get_control_sentences(ref)}
+    data_dir = default_control_dir() if data_dir is None else data_dir
+    cues = {
+        s for ref in list_control_blocks(data_dir) for s in get_control_sentences(ref)
+    }
     return PhonemeTable.build(
         {s for s in cues if s},
         path or CUE_PHONEMES.path,
@@ -303,9 +325,10 @@ class BlockRef:
 
 
 def list_control_blocks(
-    data_dir: str | Path = DEFAULT_CONTROL_DIR,
+    data_dir: str | Path | None = None,
 ) -> list[BlockRef]:
     """All block files of the release folder, sorted by session then block number."""
+    data_dir = default_control_dir() if data_dir is None else data_dir
     out = []
     for p in sorted(Path(data_dir).glob("t15_day*_block*.mat")):
         m = _CONTROL_FILE_RE.fullmatch(p.name)

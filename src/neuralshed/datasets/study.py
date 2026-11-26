@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib
 import typing as tp
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -11,29 +12,99 @@ from neuralset.events import etypes
 from neuralset.events import study as ns_study
 
 from neuralshed.datasets import participants
+from neuralshed.datasets.utils import data_root, data_root_is_set
 from neuralshed.events import DenseArrayEvent
 
 # Timeline-dict keys every neuralshed timeline carries, with their defaults. A Study sets
 # them only where the released data are bad (see docs/standardization.md, valid). They
 # describe the data rather than identify the timeline, so they stay out of the timeline id.
 # A Study may also set them on single event rows; those rows keep their own values and
-# the timeline value fills the rest.
-_TIMELINE_DEFAULTS: dict[str, tp.Any] = {"valid": True, "valid_description": ""}
+# the timeline value fills the rest. A Study adds its own keys with ``timeline_defaults``.
+_BASE_TIMELINE_DEFAULTS: dict[str, tp.Any] = {"valid": True, "valid_description": ""}
+
+# Columns that identify a timeline or an event, or that the framework writes itself.
+_RESERVED_TIMELINE_KEYS = frozenset(
+    {
+        "subject",
+        "session",
+        "task",
+        "run",
+        "path",
+        "timeline",
+        "study",
+        "dataset_id",
+        "participant_id",
+        "type",
+        "start",
+        "duration",
+        "stop",
+    }
+)
+
+
+def _make_dataset_folder(path: Path) -> None:
+    """Create the folders between the data root and ``path``'s parent.
+
+    neuralset requires a study path's parent to exist, so on a fresh data root
+    ``<root>/<dataset>/data`` would fail. Only folders under an existing
+    ``NEURALSHED_DATA_ROOT`` are created: a mistyped or unmounted root still fails.
+    """
+    if not data_root_is_set():
+        return
+    root = data_root()
+    if root.is_dir() and path.parent.is_relative_to(root):
+        path.parent.mkdir(parents=True, exist_ok=True)
 
 
 class _NeuralshedStudy(ns_study.Study):
     """NeuroAI Study with neuralshed provenance and validation conventions."""
 
     dataset_id: tp.ClassVar[str] = ""
+    # {timeline key: {value: sentence}}, joined per timeline by describe_timeline
+    timeline_descriptions: tp.ClassVar[dict[str, dict[tp.Any, str]]] = {}
+    # {timeline key: default} this Study adds to the base defaults: each timeline gets the
+    # default unless iter_timelines yields the key, and event rows may set their own value
+    timeline_defaults: tp.ClassVar[dict[str, tp.Any]] = {}
+    _timeline_defaults: tp.ClassVar[dict[str, tp.Any]] = _BASE_TIMELINE_DEFAULTS
     _participant_maps: tp.ClassVar[dict[str, dict[str, str]]] = {}
 
+    def __init_subclass__(cls, **kwargs: tp.Any) -> None:
+        super().__init_subclass__(**kwargs)
+        own = cls.__dict__.get("timeline_defaults", {})
+        owned = _RESERVED_TIMELINE_KEYS.union(_BASE_TIMELINE_DEFAULTS).intersection(own)
+        if owned:
+            raise TypeError(
+                f"{cls.__name__}.timeline_defaults cannot set {sorted(owned)}"
+            )
+        not_scalar = [
+            key
+            for key, value in own.items()
+            if not isinstance(value, (str, bool, int, float))
+        ]
+        if not_scalar:
+            raise TypeError(
+                f"{cls.__name__}.timeline_defaults needs str, bool, int or float "
+                f"values; got another type for {sorted(not_scalar)}"
+            )
+        cls._timeline_defaults = {**cls._timeline_defaults, **own}
+
     def model_post_init(self, log__: tp.Any) -> None:
+        _make_dataset_folder(Path(self.path))
         super().model_post_init(log__)
         if not self.dataset_id:
             raise ValueError(
                 f"{type(self).__name__} must declare a non-empty dataset_id"
             )
         self.timelines.infra = None
+
+    @classmethod
+    def describe_timeline(cls, attributes: tp.Mapping[str, tp.Any]) -> str:
+        """Join the ``timeline_descriptions`` sentences for a timeline's values."""
+        sentences = []
+        for key, by_value in cls.timeline_descriptions.items():
+            if key in attributes and attributes[key] in by_value:
+                sentences.append(by_value[attributes[key]])
+        return " ".join(sentences)
 
     @classmethod
     def _participant_map(cls) -> dict[str, str]:
@@ -162,23 +233,31 @@ class _NeuralshedStudy(ns_study.Study):
             return self._timelines
         timelines = super()._all_timelines()
         for timeline in timelines:
-            for key, default in _TIMELINE_DEFAULTS.items():
+            for key, default in self._timeline_defaults.items():
                 timeline.setdefault(key, default)
+        ids = [self._to_timeline_string(timeline) for timeline in timelines]
+        if len(set(ids)) != len(ids):
+            self._timelines = None  # drop the memo so the next call raises too
+            raise ValueError(
+                f"{type(self).__name__} timelines share an id once "
+                f"{sorted(self._timeline_defaults)} are left out of it; "
+                "a key that tells two timelines apart cannot be a timeline default"
+            )
         return timelines
 
     def _to_timeline_string(self, timeline: dict[str, tp.Any]) -> str:
-        identity = {k: v for k, v in timeline.items() if k not in _TIMELINE_DEFAULTS}
+        identity = {
+            k: v for k, v in timeline.items() if k not in self._timeline_defaults
+        }
         return super()._to_timeline_string(identity)
 
     def _load_one(self, timeline: dict[str, tp.Any]) -> pd.DataFrame:
-        flags = {k: v for k, v in timeline.items() if k in _TIMELINE_DEFAULTS}
+        defaults = {k: v for k, v in timeline.items() if k in self._timeline_defaults}
         events = super()._load_one(
-            {k: v for k, v in timeline.items() if k not in flags}
+            {k: v for k, v in timeline.items() if k not in defaults}
         )
-        for key, value in flags.items():
-            if (
-                key in events.columns
-            ):  # row-level flags win, the timeline fills the rest
+        for key, value in defaults.items():
+            if key in events.columns:  # row values win, the timeline fills the rest
                 events[key] = events[key].where(events[key].notna(), value)
             else:
                 events[key] = value

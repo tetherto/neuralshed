@@ -99,7 +99,10 @@ FILES = {
     (TASK_DRAG_DROP, "T11"): "sesData_DD_T11.mat",
 }
 
-DEFAULT_DATA_DIR = dataset_dir("gusman_2025") / "data"
+
+def default_data_dir() -> Path:
+    """This dataset's data folder under ``NEURALSHED_DATA_ROOT``."""
+    return dataset_dir("gusman_2025") / "data"
 
 
 @dataclass(frozen=True)
@@ -177,8 +180,9 @@ def _decode_labels(handle: h5py.File, reference) -> np.ndarray:
     return np.array([names[c - 1] if c else "" for c in codes], dtype=object)
 
 
-def list_sessions(data_dir: str | Path = DEFAULT_DATA_DIR) -> list[SessionRef]:
+def list_sessions(data_dir: str | Path | None = None) -> list[SessionRef]:
     """Every session across the three files, ordered by task then participant."""
+    data_dir = default_data_dir() if data_dir is None else data_dir
     root_dir = Path(data_dir)
     refs = []
     for (task, participant), filename in FILES.items():

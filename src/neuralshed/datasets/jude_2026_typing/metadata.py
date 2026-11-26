@@ -248,7 +248,7 @@ DATASET_METADATA = {
             "bin_size_ms": 10.0,
             "rate_hz": 100.0,
             "dtype": "float32",
-            "description": "Spike-band power (sum of squared 250 Hz-5 kHz voltages, capped at "
+            "description": "Spike-band power (mean of squared 250 Hz-5 kHz voltages, capped at "
             "50,000 uV^2) per 10 ms bin, same (n_bins, 384) shape as the crossings. Raw, not "
             "z-scored.",
         },

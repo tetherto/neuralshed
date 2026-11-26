@@ -2,7 +2,7 @@
 
 Schema-as-code: one table per catalog entity, populated from the per-dataset
 ``metadata.py`` declarations and standardized via ``vocab.py`` (soft-enforced at populate
-time). Backend-agnostic — SQLite by default, PostgreSQL via ``DATABASE_URL``.
+time). Backend-agnostic — SQLite by default, PostgreSQL via ``NEURALSHED_DATABASE_URL``.
 
 Entities:
 - ``Dataset``     — provenance (source platform / id / url), licence, references, status, macro-task.

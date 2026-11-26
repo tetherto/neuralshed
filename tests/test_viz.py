@@ -1,11 +1,15 @@
 """Clickable event timeline and renderer dispatch, without loading source datasets."""
 
+import typing as tp
+
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import pytest
 from neuralset.events import etypes
+from neuralset.events import study as ns_study
 
+from neuralshed.datasets.study import NeuralshedStudy
 from neuralshed.events import PositionSeries, SpikeCounts
 from neuralshed.viz import EventViewContext, EventViewRegistry, TimeReference
 from neuralshed.viz import explore_events
@@ -54,6 +58,90 @@ def test_timeline_groups_rows_and_preserves_click_identity():
     event_ids = sorted(int(x) for trace in fig.data for x in trace.customdata)
     assert event_ids == list(range(len(events)))
     assert list(fig.layout.yaxis.categoryarray) == ["Sentence", "Stimulus"]
+
+
+def test_timeline_splits_stimulus_lanes_by_kind():
+    # A short beep inside a long target cue gets its own lane. A type with one kind does not.
+    events = pd.DataFrame(
+        [
+            {
+                "type": "Stimulus",
+                "timeline": "t1",
+                "start": 0.0,
+                "duration": 4.0,
+                "stimulus_kind": "target_cue",
+            },
+            {
+                "type": "Stimulus",
+                "timeline": "t1",
+                "start": 2.0,
+                "duration": 0.01,
+                "stimulus_kind": "speech_go_cue",
+            },
+            {
+                "type": "Action",
+                "timeline": "t1",
+                "start": 1.0,
+                "duration": 3.0,
+                "action_kind": "cursor_control",
+            },
+        ]
+    )
+    fig = plot_event_timeline(events, lanes=["Stimulus", "Action"])
+
+    assert list(fig.layout.yaxis.categoryarray) == [
+        "Action",
+        "Stimulus · target_cue",
+        "Stimulus · speech_go_cue",
+    ]
+    event_ids = sorted(int(x) for trace in fig.data for x in trace.customdata)
+    assert event_ids == list(range(len(events)))
+
+
+def test_timeline_splits_series_lanes_by_effector():
+    # Two hands' whole-block streams share a type and a span, so one would hide the other.
+    hand = {
+        "type": "CursorPositionSeries",
+        "timeline": "t1",
+        "start": 0.0,
+        "duration": 10.0,
+    }
+    events = pd.DataFrame(
+        [
+            {**hand, "effector": "right"},
+            {**hand, "effector": "left"},
+            {"type": "Action", "timeline": "t1", "start": 1.0, "duration": 3.0},
+        ]
+    )
+    fig = plot_event_timeline(events, lanes=["CursorPositionSeries", "Action"])
+
+    assert list(fig.layout.yaxis.categoryarray) == [
+        "Action",
+        "CursorPositionSeries · right",
+        "CursorPositionSeries · left",
+    ]
+    lane_of = {
+        int(i): lane for trace in fig.data for i, lane in zip(trace.customdata, trace.y)
+    }
+    assert lane_of == {
+        0: "CursorPositionSeries · right",
+        1: "CursorPositionSeries · left",
+        2: "Action",
+    }
+
+
+def test_timeline_hover_shows_trial_fields_and_integer_values():
+    events = simple_events().assign(
+        period=["go", None, None],
+        trial_id=[17, None, None],
+        condition=["index_middle-flex", None, None],
+    )
+    fig = plot_event_timeline(events)
+
+    hovers = [text for trace in fig.data for text in trace.hovertext]
+    cue = next(text for text in hovers if "start: 0.000s" in text)
+    assert "duration: 1.000s<br>period: go<br>trial_id: 17<br>" in cue
+    assert "code: 1<br>condition: index_middle-flex" in cue
 
 
 def test_timeline_uses_stable_ids_from_a_filtered_frame():
@@ -139,13 +227,13 @@ def test_default_dense_views_read_a_synthetic_event(tmp_path):
     views = default_event_view_registry().views_for(context.event)
 
     assert [view.name for view in views] == [
+        "fields",
         "trajectory",
         "traces",
         "heatmap",
-        "fields",
     ]
-    assert [view.time_sensitive for view in views] == [True, True, True, False]
-    rendered = {view.name: view.renderer(context) for view in views[:3]}
+    assert [view.time_sensitive for view in views] == [False, True, True, True]
+    rendered = {view.name: view.renderer(context) for view in views[1:]}
     assert isinstance(rendered["trajectory"], go.Figure)
     assert [trace.mode for trace in rendered["trajectory"].data[-2:]] == [
         "markers",
@@ -189,24 +277,25 @@ def test_explorer_selects_an_event_and_offers_its_views():
     assert explorer.selected_event_id == 1
     assert explorer._context is not None
     assert explorer._context.event.text == "hello world"
-    assert [value for _, value in explorer.view_picker.options] == ["text", "fields"]
+    assert [value for _, value in explorer.view_picker.options] == ["fields", "text"]
+    assert explorer.view_picker.value == "fields"
 
 
 def test_explorer_accepts_default_views_and_keeps_picker_in_compact_mode():
     explorer = explore_events(
         simple_events(),
-        default_views={"Sentence": "fields"},
+        default_views={"Sentence": "text"},
         show_controls=False,
     )
     explorer.select_event(1)
 
-    assert explorer.state.active_view == "fields"
-    assert explorer.view_picker.value == "fields"
-    assert explorer.view_picker in explorer.detail.children
+    assert explorer.state.active_view == "text"
+    assert explorer.view_picker.value == "text"
+    assert explorer.view_picker in explorer.detail_header.children
 
 
-def test_dashboard_query_filters_marks_but_preserves_full_context():
-    explorer = explore_events(simple_events(), query='type == "Stimulus"')
+def test_dashboard_type_filter_hides_marks_but_preserves_full_context():
+    explorer = explore_events(simple_events(), visible_types=["Stimulus"])
 
     assert explorer.visible_events["_event_id"].tolist() == [0, 2]
     plotted_ids = sorted(
@@ -333,9 +422,16 @@ def test_dashboard_uses_two_rows_tabs_and_bounded_event_types():
 
     assert explorer.widget.children == (explorer.top_row, explorer.detail)
     assert explorer.top_row.children == (explorer.sidebar, explorer.timeline_host)
-    assert explorer.detail.children == (
-        explorer.detail_title,
+    assert explorer.detail.children == (explorer.timeline_info, explorer.event_detail)
+    assert explorer.detail.get_title(0) == "Timeline"
+    assert explorer.detail.get_title(1) == "Event"
+    assert explorer.event_detail.children == (
+        explorer.detail_header,
         explorer.detail_content,
+    )
+    assert explorer.detail_header.children == (
+        explorer.detail_title,
+        explorer.view_picker,
     )
     assert explorer.top_row.layout.height == "520px"
     assert explorer.timeline.layout.height == 520
@@ -343,10 +439,6 @@ def test_dashboard_uses_two_rows_tabs_and_bounded_event_types():
     assert explorer.sidebar_tabs.get_title(1) == "View"
     assert explorer.filter_tab.children == (
         explorer.timeline_picker,
-        explorer.query_input,
-        explorer.search_input,
-        explorer.filter_actions,
-        explorer.query_status,
         explorer.type_box,
         explorer.lane_picker,
         explorer.lane_actions,
@@ -377,7 +469,6 @@ def test_dashboard_uses_two_rows_tabs_and_bounded_event_types():
     assert explorer.reference_box in explorer.view_tab.children
     assert explorer.reference_box.layout.height == "116px"
     assert explorer.reference_box.layout.overflow == "auto"
-    assert explorer.selection_summary in explorer.view_tab.children
     assert not hasattr(explorer, "previous_button")
     assert not hasattr(explorer, "next_button")
     assert all(
@@ -401,6 +492,64 @@ def test_dashboard_switches_between_timelines_and_clears_selection():
     assert explorer.selected_event_id is None
     assert explorer.state.reference_time is None
     assert explorer.references == ()
+
+
+def test_timeline_tab_lists_timeline_attributes_and_follows_selection():
+    first = simple_events().assign(session="s1", valid=True)
+    second = simple_events().assign(
+        timeline="t2", session="s2", valid=False, valid_description="bad block"
+    )
+    explorer = explore_events(pd.concat([first, second], ignore_index=True))
+
+    assert explorer.detail.selected_index == 0
+    assert "s1" in explorer.timeline_info.value
+    # event-level columns are empty on some rows, so they are not timeline attributes
+    assert "description" not in explorer.timeline_info.value
+    assert "language" not in explorer.timeline_info.value
+
+    explorer.select_event(1)
+    assert explorer.detail.selected_index == 1
+
+    explorer.timeline_picker.value = "t2"
+    assert explorer.detail.selected_index == 0
+    assert "s2" in explorer.timeline_info.value
+    assert "s1" not in explorer.timeline_info.value
+    assert "bad block" in explorer.timeline_info.value
+
+
+class _DescribedStudy(NeuralshedStudy):
+    dataset_id: tp.ClassVar[str] = "singer_2025"
+    description: tp.ClassVar[str] = "A synthetic study."
+    timeline_descriptions: tp.ClassVar[dict[str, dict[tp.Any, str]]] = {
+        "task": {"reach": "A reaching task.", "speak": "A speaking task."},
+        "condition": {"control": "No movement."},
+    }
+
+
+def test_timeline_tab_describes_the_study_and_each_timeline(monkeypatch):
+    monkeypatch.setitem(ns_study.STUDIES, "DescribedStudy", _DescribedStudy)
+    first = simple_events().assign(
+        study="DescribedStudy", task="reach", condition="control"
+    )
+    second = simple_events().assign(
+        timeline="t2", study="DescribedStudy", task="speak", condition="verbal"
+    )
+    explorer = explore_events(pd.concat([first, second], ignore_index=True))
+
+    assert "A synthetic study." in explorer.timeline_info.value
+    assert "A reaching task. No movement." in explorer.timeline_info.value
+
+    explorer.timeline_picker.value = "t2"
+    assert "A speaking task." in explorer.timeline_info.value
+    assert "A reaching task." not in explorer.timeline_info.value
+    assert "No movement." not in explorer.timeline_info.value
+
+
+def test_timeline_tab_without_a_registered_study_shows_attributes_only():
+    explorer = explore_events(simple_events().assign(study="NotAStudy", session="s1"))
+
+    assert "<b>Study</b>" not in explorer.timeline_info.value
+    assert "s1" in explorer.timeline_info.value
 
 
 def test_explorer_refreshes_active_time_view_after_range_change():
@@ -512,4 +661,4 @@ def test_unrelated_event_class_still_has_fields_view(tmp_path):
         unit="counts/bin",
     )
     names = [view.name for view in default_event_view_registry().views_for(event)]
-    assert names == ["heatmap", "fields"]
+    assert names == ["fields", "heatmap"]

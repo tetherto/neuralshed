@@ -38,7 +38,9 @@ def _fake_tokenizing_g2p(text: str) -> list[str]:
 def test_g2p_phonemes_apostrophe_join():
     # "I 'll go": joined it is two words, split the detached "'ll" is a third
     assert g2p_phonemes("I 'll go.", _fake_tokenizing_g2p) == "K AH | K AH |"
-    split = g2p_phonemes("I 'll go.", _fake_tokenizing_g2p, join_split_apostrophes=False)
+    split = g2p_phonemes(
+        "I 'll go.", _fake_tokenizing_g2p, join_split_apostrophes=False
+    )
     assert split == "K AH | K AH | K AH |"
 
 

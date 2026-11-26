@@ -1,11 +1,12 @@
 """Readers for Singer-Clark et al. 2025 cursor-control ``.mat`` blocks.
 
 The public release contains 51 cursor-task blocks from post-implant days 39, 202,
-and 468. Each file is one 3 to 5 minute block whose neural and behavioral streams
-share a 10 ms time base. The separate ``t15_day00202_words.mat`` speech-only file
-is useful as a comparison but is outside this cursor-control Study.
+and 468. Each file is one block of about 3 minutes (day 468 block 01 is 70 s) whose
+neural and behavioral streams share a 10 ms time base. The separate
+``t15_day00202_words.mat`` comparison file is outside this cursor-control Study.
 """
 
+import datetime as dt
 import re
 from dataclasses import dataclass
 from functools import lru_cache
@@ -24,7 +25,12 @@ POSITION_DIMS = ("x", "y")
 ARRAY_ORDER = ("v6v", "4", "55b", "d6v")
 
 DATA_SUBDIR = "Singer2025CursorControl"
-DEFAULT_DATA_DIR = dataset_dir("singer_2025") / "data" / DATA_SUBDIR
+
+
+def default_data_dir() -> Path:
+    """This dataset's data folder under ``NEURALSHED_DATA_ROOT``."""
+    return dataset_dir("singer_2025") / "data" / DATA_SUBDIR
+
 
 _BLOCK_RE = re.compile(
     r"t15_day(?P<day>\d{5})_block(?P<block>\d{2})_(?P<task>.+)_task\.mat$"
@@ -69,6 +75,14 @@ class BlockRef:
         return TASK_LABELS[self.task]
 
 
+def session_date(day: int) -> str | None:
+    """ISO date of a post-implant day, from T15's registry implant date."""
+    from neuralshed.datasets import participants
+
+    implant = participants.implant_date("braingate2/T15")
+    return (implant + dt.timedelta(days=day)).isoformat() if implant else None
+
+
 def block_ref(path: str | Path) -> BlockRef:
     """Parse a released cursor-task filename."""
     path = Path(path)
@@ -83,8 +97,9 @@ def block_ref(path: str | Path) -> BlockRef:
     )
 
 
-def list_blocks(data_dir: str | Path = DEFAULT_DATA_DIR) -> list[BlockRef]:
+def list_blocks(data_dir: str | Path | None = None) -> list[BlockRef]:
     """All downloaded cursor-task blocks in canonical day/block order."""
+    data_dir = default_data_dir() if data_dir is None else data_dir
     root = Path(data_dir)
     if not root.exists():
         return []
@@ -99,26 +114,51 @@ def list_blocks(data_dir: str | Path = DEFAULT_DATA_DIR) -> list[BlockRef]:
     return sorted(refs, key=lambda ref: (ref.day, ref.block, ref.task))
 
 
-@lru_cache(maxsize=2)
+# The two neural streams are most of each ~28 MB file. They are read only on demand.
+NEURAL_KEYS = ("threshold_crossings", "spike_band_power")
+
+
+def _read(path: str, names: list[str]) -> dict:
+    return sio.loadmat(
+        path,
+        variable_names=names,
+        squeeze_me=True,
+        struct_as_record=False,
+    )
+
+
+@lru_cache(maxsize=64)
+def _fields(path: str) -> tuple[str, ...]:
+    return tuple(name for name, _, _ in sio.whosmat(path))
+
+
+@lru_cache(maxsize=64)
 def _load(path: str) -> dict:
-    """Load one block, keeping at most two approximately 28 MB files in memory."""
-    return sio.loadmat(path, squeeze_me=True, struct_as_record=False)
+    return _read(path, [name for name in _fields(path) if name not in NEURAL_KEYS])
+
+
+@lru_cache(maxsize=4)
+def _load_neural(path: str, key: str) -> np.ndarray:
+    return _read(path, [key])[key]
 
 
 def load_block(ref: BlockRef) -> dict:
+    """Every field of a block except the neural streams (see ``get_series``)."""
     return _load(str(ref.path))
 
 
 def available_fields(ref: BlockRef) -> set[str]:
-    return {key for key in load_block(ref) if not key.startswith("__")}
+    return set(_fields(str(ref.path)))
 
 
 def get_series(ref: BlockRef, key: str) -> np.ndarray:
     """Return one per-bin field as ``(n_bins, n_dims)``."""
-    data = load_block(ref)
-    if key not in data:
+    if key not in available_fields(ref):
         raise KeyError(f"{ref.label}: missing field {key!r}")
-    out = np.asarray(data[key])
+    if key in NEURAL_KEYS:
+        out = np.asarray(_load_neural(str(ref.path), key))
+    else:
+        out = np.asarray(load_block(ref)[key])
     if out.ndim == 1:
         out = out[:, None]
     if out.ndim != 2:
@@ -147,11 +187,7 @@ def trial_windows(ref: BlockRef) -> list[tuple[int, int]]:
         stops = np.atleast_1d(data["trial_end_bin"]).astype(int) + 1
     else:
         stops = np.r_[starts[1:], n_bins(ref)]
-    return [
-        (int(start), min(int(stop), n_bins(ref)))
-        for start, stop in zip(starts, stops)
-        if 0 <= start < stop
-    ]
+    return [(int(start), int(stop)) for start, stop in zip(starts, stops)]
 
 
 def trial_field(ref: BlockRef, key: str, default=None) -> np.ndarray | None:
@@ -160,6 +196,34 @@ def trial_field(ref: BlockRef, key: str, default=None) -> np.ndarray | None:
     if value is default:
         return default
     return np.atleast_1d(value)
+
+
+def loop_type(ref: BlockRef) -> str:
+    """``closed`` when no trial's movement period has assistance, else ``assisted``.
+
+    Calibration blocks start fully assisted and step down to closed loop. Speech blocks
+    are assisted only before their first trial, so they count as closed.
+    """
+    assist = get_series(ref, "assist_amount")[:, 0]
+    go = trial_field(ref, "cursor_go_cue_bin")
+    for trial, (start, stop) in enumerate(trial_windows(ref)):
+        begin = int(go[trial]) if go is not None else start
+        if assist[begin:stop].any():
+            return "assisted"
+    return "closed"
+
+
+def trial_loop_type(assist: np.ndarray) -> str:
+    """A trial's ``loop_type`` from its movement-period ``assist_amount`` bins.
+
+    ``open`` under full assistance throughout, ``closed`` with no assistance, and
+    ``assisted`` otherwise, including trials during which the assistance changes.
+    """
+    if not assist.any():
+        return "closed"
+    if (assist == 1.0).all():
+        return "open"
+    return "assisted"
 
 
 def scalar_field(ref: BlockRef, key: str, default=None):
@@ -225,8 +289,9 @@ def array_labels(ref: BlockRef) -> tuple[str, ...]:
 
 
 def session_blocks(
-    data_dir: str | Path = DEFAULT_DATA_DIR,
+    data_dir: str | Path | None = None,
 ) -> dict[str, list[BlockRef]]:
+    data_dir = default_data_dir() if data_dir is None else data_dir
     out: dict[str, list[BlockRef]] = {}
     for ref in list_blocks(data_dir):
         out.setdefault(ref.session, []).append(ref)
@@ -241,10 +306,12 @@ __all__ = [
     "POSITION_DIMS",
     "ARRAY_ORDER",
     "DATA_SUBDIR",
-    "DEFAULT_DATA_DIR",
+    "NEURAL_KEYS",
+    "default_data_dir",
     "TASK_LABELS",
     "CURSOR_IMAGERY_BY_DAY",
     "BlockRef",
+    "session_date",
     "block_ref",
     "list_blocks",
     "load_block",
@@ -255,6 +322,8 @@ __all__ = [
     "trial_starts",
     "trial_windows",
     "trial_field",
+    "loop_type",
+    "trial_loop_type",
     "scalar_field",
     "speech_prompts",
     "geometry",

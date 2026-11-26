@@ -5,7 +5,7 @@ arrays in the hand knob of the left precentral gyrus) recorded while BrainGate2
 participant T5 attempted to handwrite single characters, straight lines and sentences.
 
 Every reader takes ``root``, the ``handwritingBCIData`` folder, and falls back to
-:func:`source_root` on the data drive.
+:func:`default_data_dir` on the data drive.
 
 References
 ----------
@@ -28,7 +28,7 @@ from neuralshed.datasets.utils import dataset_dir
 STUDY_FOLDER = "Willett2021Handwriting"
 
 
-def source_root() -> Path:
+def default_data_dir() -> Path:
     """``handwritingBCIData`` on the data drive, the default ``root`` of every reader."""
     return dataset_dir("willet_2021") / "data" / STUDY_FOLDER / "handwritingBCIData"
 
@@ -218,7 +218,7 @@ TRIAL_VARIABLES = {
 
 
 def _root(root: Path | str | None) -> Path:
-    return Path(root) if root is not None else source_root()
+    return Path(root) if root is not None else default_data_dir()
 
 
 def list_sessions(root: Path | str | None = None) -> list[str]:

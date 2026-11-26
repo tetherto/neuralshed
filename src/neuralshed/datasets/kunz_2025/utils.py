@@ -50,10 +50,14 @@ from neuralshed.text import PhonemeTable
 if tp.TYPE_CHECKING:
     import pandas as pd
 
+
 # --- Constants -----------------------------------------------------------------
 # Data is staged in the framework study-folder (.../data/Kunz2025InnerSpeech/); the Study
 # base appends that class-name subfolder, so utils mirrors the exact same path.
-DATA_DIR = dataset_dir("kunz_2025") / "data" / "Kunz2025InnerSpeech"
+def default_data_dir() -> Path:
+    """This dataset's data folder under ``NEURALSHED_DATA_ROOT``."""
+    return dataset_dir("kunz_2025") / "data" / "Kunz2025InnerSpeech"
+
 
 # Array layout per participant in stored column order, (name, n_channels). Names follow the
 # sibling datasets of the same participant (T12 willet_2023, T15 card_2024, T17
@@ -420,20 +424,22 @@ def family_of_path(path: Path | str) -> str:
     return EXPERIMENTS[exp]["family"]
 
 
-def list_mat_files(data_dir: Path | str = DATA_DIR) -> list[Path]:
+def list_mat_files(data_dir: Path | str | None = None) -> list[Path]:
     """Every dataset ``.mat`` file (sorted; skips macOS ``._`` shadow files)."""
+    data_dir = default_data_dir() if data_dir is None else data_dir
     return sorted(
         p for p in Path(data_dir).rglob("*.mat") if not p.name.startswith("._")
     )
 
 
-def list_timeline_files(data_dir: Path | str = DATA_DIR) -> list[Path]:
+def list_timeline_files(data_dir: Path | str | None = None) -> list[Path]:
     """The ``.mat`` files the Study reads, one timeline per block of each.
 
     Every file, EXCEPT the 7 per-behavior ``isolatedVerbalBehaviors`` subsets: only the
     combined ``*_allBehaviors_raw.mat`` is kept (their exact concatenation, with the behavior
     encoded in the cue text), to avoid double-counting trials.
     """
+    data_dir = default_data_dir() if data_dir is None else data_dir
     out = []
     for p in list_mat_files(data_dir):
         if (
@@ -1065,8 +1071,9 @@ def summarize_file(path: Path | str) -> FileSummary:
     )
 
 
-def summary_table(data_dir: Path | str = DATA_DIR, timelines_only: bool = False):
+def summary_table(data_dir: Path | str | None = None, timelines_only: bool = False):
     """Per-file summary DataFrame (one row per ``.mat`` file)."""
+    data_dir = default_data_dir() if data_dir is None else data_dir
     import pandas as pd
 
     files = (
@@ -1095,8 +1102,9 @@ def summary_table(data_dir: Path | str = DATA_DIR, timelines_only: bool = False)
     return pd.DataFrame(rows)
 
 
-def experiment_overview(data_dir: Path | str = DATA_DIR):
+def experiment_overview(data_dir: Path | str | None = None):
     """Experiment-type x participants x file/trial counts DataFrame."""
+    data_dir = default_data_dir() if data_dir is None else data_dir
     import pandas as pd
 
     df = summary_table(data_dir)
@@ -1126,15 +1134,18 @@ CUE_PHONEMES = PhonemeTable(
 
 
 def build_cue_phonemes(
-    data_dir: Path | str = DATA_DIR, path: str | Path | None = None
+    data_dir: Path | str | None = None, path: str | Path | None = None
 ) -> PhonemeTable:
     """Regenerate ``assets/cue_phonemes.json`` (or ``path``) over the ``sentence_text``
     of every sentence-family file the Study reads (:func:`list_timeline_files`). Needs
     the ``g2p`` extra."""
+    data_dir = default_data_dir() if data_dir is None else data_dir
     cues: set[str] = set()
     for p in list_timeline_files(data_dir):
         if family_of_path(p) == FAMILY_SENTENCE:
-            cues.update(t for t in get_trials(p).sentence_text if isinstance(t, str) and t)
+            cues.update(
+                t for t in get_trials(p).sentence_text if isinstance(t, str) and t
+            )
     return PhonemeTable.build(
         cues,
         path or CUE_PHONEMES.path,
@@ -1147,7 +1158,8 @@ def build_cue_phonemes(
 
 
 if __name__ == "__main__":
-    print(f"Data dir: {DATA_DIR}  exists={DATA_DIR.exists()}")
+    data_dir = default_data_dir()
+    print(f"Data dir: {data_dir}  exists={data_dir.exists()}")
     files = list_mat_files()
     tls = list_timeline_files()
     print(

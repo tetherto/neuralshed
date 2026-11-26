@@ -233,9 +233,9 @@ def test_every_window_equals_its_source_trial(events):
         window = extractor(
             [etypes.Event.from_dict(row)], start=0.0, duration=sentence.duration
         )
-        assert np.array_equal(window.numpy(), _source_trial(sentence)), (
-            sentence.timeline
-        )
+        assert np.array_equal(
+            window.numpy(), _source_trial(sentence)
+        ), sentence.timeline
 
 
 def test_a_resampled_window_averages_source_bin_pairs(events):

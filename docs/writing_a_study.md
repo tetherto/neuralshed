@@ -1,6 +1,6 @@
 # Writing a neuralshed `Study`
 
-How to write the `Study` class for a dataset in `src/neuralshed/datasets/<name>/study.py`. A neuralshed Study is a neuroai `Study` (from `neuralset`) with a thin project base on top. This guide covers the contract, the neuralshed conventions, and a skeleton to copy. For a complete worked examples, read current implementations at `neuralshed/datasets/<dataset_id>/study.py`.
+How to write the `Study` class for a dataset in `src/neuralshed/datasets/<name>/study.py`. A neuralshed Study is a neuroai `Study` (from `neuralset`) with a thin project base on top. This guide covers the contract, the neuralshed conventions, and a skeleton to copy. For complete worked examples, read the current implementations at `neuralshed/datasets/<dataset_id>/study.py`.
 
 Framework references, when you need them: `neuralset/events/study.py` (base `Study`, `StudyInfo`, `SpecialLoader`) and `neuralset/events/etypes.py` (built-in event types).
 
@@ -31,7 +31,7 @@ Every study subclasses `NeuralshedStudy` from [`datasets/study.py`](../src/neura
 - Validates every dense-array event (`SpikeCounts`, `BandPower`, `BehavioralSeries` subclasses): positive `duration` and `frequency`, and a positive integer `n_features`.
 - Configures timeline loading, so no `model_post_init` override is needed.
 
-One optional hook: `_postprocess_timeline(events, timeline)` runs after provenance injection and before validation, for any customization that might need to be done on top ofthe standardized frame.
+One optional hook: `_postprocess_timeline(events, timeline)` runs after provenance injection and before validation, for any customization that might need to be done on top of the standardized frame.
 
 ---
 
@@ -56,9 +56,11 @@ Every row is one event. neuralset validates each row against its typed `Event` m
 
 **Any other column rides through.** `filepath`, `frequency`, `feature`, `code`, `description`, `task_condition`, `original_split` and domain fields are all ordinary columns. Emit the attributes a model might later filter on. An attribute you do not emit cannot be selected later. Names and values for the shared ones are in [standardization.md](standardization.md).
 
-**Timeline dict keys broadcast to every row.** Every key except `subject`, `path` and `timeline` becomes a column on all of that timeline's events. Put whole-timeline labels there (`original_split`, `task_condition`, `block`). Keep event-level facts on the rows. Emitting the same column at both levels raises when the values differ and warns when they match.
+**Timeline dict keys broadcast to every row.** Every key except `subject`, `path` and `timeline` becomes a column on all of that timeline's events. Put whole-timeline labels there (`original_split`, `task_condition`, `block`). Keep event-level facts on the rows. Emitting the same column at both levels raises when the values differ and warns when they match, unless the key is a timeline default (below).
 
 **Timeline dict keys form the timeline id.** The id is the class name plus every key and value in the dict, `path` included, and it feeds every downstream cache key. Keep the dict stable and concise: identity, whole-timeline labels, and one file reference under `path`. Do not add plumbing such as a file index or a start time.
+
+**Timeline defaults let event rows override a timeline value.** A key listed in the class variable `timeline_defaults` gets its default on every timeline whose dict does not set it. An event row that sets the same column keeps its own value, and the timeline value fills the other rows. Use it for a label that holds for most of a timeline and differs on some rows, for example `timeline_defaults = {"loop_type": "closed"}` with `loop_type` set on the `Action` rows of the trials that ran open loop. `valid` and `valid_description` are timeline defaults in every Study. Timeline defaults stay out of the timeline id, so a key that tells two timelines apart cannot be one, and `_load_timeline_events` and the `SpecialLoader` methods receive the timeline dict without them. Identity and framework columns (`subject`, `session`, `task`, `run`, `path`, `type`, `start`, `duration`, ...) cannot be timeline defaults.
 
 ---
 
@@ -70,7 +72,8 @@ neuralshed adds the types iBCI datasets need in [`events.py`](../src/neuralshed/
 
 - `SpikeCounts` for pre-binned spike or threshold-crossing counts, `BandPower` for binned power in a band.
 - `BehavioralSeries` and its concrete subclasses (`PositionSeries`, `CursorPositionSeries`, `TargetPositionSeries`, `GraspSeries`, velocity and acceleration series, `AcousticFeatures`, ...). Always emit a concrete subclass so it can be selected by type.
-- `Character` (a glyph) and `Intertrial` (dead time between trials) as non-dense additions.
+- `BinaryMask` for per-sample True/False flags, such as the bins a benchmark scores, with `true_means` saying what True marks.
+- `Character` (a glyph), `Intertrial` (dead time between trials) and `AutoMovement` (a movement the task software makes on its own) as non-dense additions.
 
 Every dense row declares `feature` (the stream name), `n_features` (rows of the array), `frequency`, `unit`, `normalization` and `processing`. `unit` and `normalization` are read by `NeuralFeatureExtractor` to put datasets on one scale, and every value must be registered in [`units.py`](../src/neuralshed/units.py). The meaning of the three fields is in [standardization.md](standardization.md). Type-specific fields (`method`, `threshold`, `lower_freq`, `dims`, ...) are documented in `events.py`.
 
@@ -141,11 +144,26 @@ class Author2025Slug(NeuralshedStudy):
     bibtex: tp.ClassVar[str] = """@article{...}"""
     licence: tp.ClassVar[str] = "CC0-1.0"
     description: tp.ClassVar[str] = "One paragraph."
+    timeline_descriptions: tp.ClassVar[dict[str, dict[tp.Any, str]]] = {
+        "task": {"center_out": "Reach from the center to one of eight targets."},
+        "condition": {"control": "The cue plays but no response is made."},
+    }
     requirements: tp.ClassVar[tuple[str, ...]] = ("h5py",)
     _info: tp.ClassVar[study.StudyInfo] = study.StudyInfo(...)
 ```
 
 `dataset_id` and `_info` are required. `requirements` lists extra packages needed to read the files. No initialization override is needed.
+
+### Timeline descriptions
+
+`timeline_descriptions` is optional. It maps a timeline key to sentences for its values. `describe_timeline(attributes)` joins the sentences for one timeline's values in declaration order, and the event explorer shows the result in its Timeline tab, under the Study `description`. singer_2025 and willet_2021 are worked examples.
+
+- **Keys.** Describe only keys that `iter_timelines` yields, since they hold one value on every row of a timeline. Pick the keys whose values change what a reader sees in the timeline: the task, its condition, open or closed loop, the purpose of a session. Leave out identity keys (`subject`, `block`, `run`, `date`) and values that read on their own (`post_implant_day`).
+- **Values.** Give a sentence for every value the Study emits for a described key. A value that only means "not applicable", such as singer_2025's `speech_condition="none"`, can be left out. A value without an entry adds nothing to the paragraph. Keys match the emitted values exactly and need not be strings: singer_2025 keys `click_enabled` by `True` and `False`.
+- **Order.** The dict order is the paragraph order. Go from broad to narrow: task, then condition, then session.
+- **Sentences.** Each entry is read next to others, so it must stand alone. Open with its context ("In the grid evaluation task, ...", "In this block ...") and say what the value means without repeating the value. Use one to four sentences, state only facts checked against the data, as in the README, and do not repeat the Study `description`. The README keeps the full task description.
+- **Reuse.** When `utils` already maps values to text, build the entries from it. willet_2021 builds its `session` entries from `utils.SESSION_DESCRIPTIONS`.
+- **Check.** Read the Timeline tab of `viz.explore_events` for one timeline of each value combination, or call `describe_timeline` on its attributes.
 
 ---
 
@@ -306,6 +324,7 @@ Everything named `utils.*` is a dataset-specific accessor you write in `utils.py
 1. Fill class metadata: `dataset_id`, `url`, `bibtex`, `licence`, `description`, `requirements`.
 2. Implement `_download` and get the source data on disk to develop against.
 3. Implement `iter_timelines`. Decide what a timeline is and which whole-timeline labels ride on the dict.
-4. Implement the `_load_<signal>` loaders and the rows in `_load_timeline_events`, neural streams first, then task events with the attributes you will select on.
-5. Do the three registrations of section 10.
-6. Run `update_source_info` (section 11), re-add `query` and `frequency`, and check `study.run()` on the query subset reads through the extractors with the expected shapes and units.
+4. Fill `timeline_descriptions` for the keys `iter_timelines` yields (section 8).
+5. Implement the `_load_<signal>` loaders and the rows in `_load_timeline_events`, neural streams first, then task events with the attributes you will select on.
+6. Do the three registrations of section 10.
+7. Run `update_source_info` (section 11), re-add `query` and `frequency`, and check `study.run()` on the query subset reads through the extractors with the expected shapes and units.

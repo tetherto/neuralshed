@@ -1,12 +1,15 @@
 """neuralset Study for Deo et al. 2024 bimanual cursor control.
 
-One timeline is one task **block** (a contiguous run under a single control loop). The
-day's ``.mat`` concatenates its blocks with recording gaps between them, so blocks -- not
-days -- are the continuous, single-condition recording units; :meth:`iter_timelines`
-slices each day by ``blockNum``. Neural threshold crossings and the two cursors' and
+One timeline is one task **block**, following the source documentation that recording
+gaps occur at block changes. The release has bin indices without timestamps, so pauses
+inside a block cannot be ruled out. :meth:`iter_timelines` slices each day by ``blockNum``
+and adds the block's control settings from ``readme.txt``, which hold for the whole block.
+Neural threshold crossings and the two cursors' and
 targets' ``(x, y)`` positions become whole-block lazy streams (the two hands split into
 separate homogeneous ``CursorPositionSeries`` / ``TargetPositionSeries``); each trial
-becomes a ``Stimulus`` (the cued movement type) and an ``Action`` (the attempted move).
+becomes a delay ``Stimulus``, an audio go-cue ``Stimulus`` and an ``Action``
+(the attempted move), with ``period`` distinguishing preparation from execution.
+An ``Intertrial`` spans each gap before the next trial within the same block.
 """
 
 import typing as tp
@@ -19,6 +22,7 @@ from neuralset.events import study
 from neuralshed.datasets.study import NeuralshedStudy
 from neuralshed.events import (  # noqa: F401  registers custom types
     CursorPositionSeries,
+    Intertrial,
     SpikeCounts,
     TargetPositionSeries,
 )
@@ -38,6 +42,13 @@ _POSITION_SOURCE: dict[str, tuple[str, tuple[int, int]]] = {
     "left_target_position": ("target", (2, 3)),
 }
 
+# readme.txt control labels (OL, CLR, CL) in the standard loop_type vocabulary.
+_LOOP_TYPE = {
+    "open_loop": "open",
+    "closed_loop_recal": "assisted",
+    "closed_loop": "closed",
+}
+
 
 class Deo2024Bimanual(NeuralshedStudy):
     """Bimanual cursor control from T5's hand-knob motor cortex arrays."""
@@ -50,7 +61,9 @@ class Deo2024Bimanual(NeuralshedStudy):
   author = {Deo, Darrel R. and Willett, Francis R. and Avansino, Donald T. and Hochberg, Leigh R. and Henderson, Jaimie M. and Shenoy, Krishna V.},
   journal = {Scientific Reports},
   volume = {14},
+  pages = {1598},
   year = {2024},
+  month = jan,
   doi = {10.1038/s41598-024-51617-3},
   url = {https://doi.org/10.1038/s41598-024-51617-3},
 }
@@ -64,26 +77,52 @@ class Deo2024Bimanual(NeuralshedStudy):
         "crossings and the two cursors' and targets' positions, across open-loop "
         "instructed-delay blocks and real-time closed-loop decoder control."
     )
+    timeline_descriptions: tp.ClassVar[dict[str, dict[tp.Any, str]]] = {
+        "loop_type": {
+            "open": (
+                "In this block the computer moved the cursors to their targets while T5 "
+                "attempted the cued movements."
+            ),
+            "assisted": (
+                "In this block the decoder moved the cursors with computer assistance, "
+                "to recalibrate it before closed-loop control."
+            ),
+            "closed": (
+                "In this block T5 controlled both cursors through the real-time decoder."
+            ),
+        },
+        "session": {
+            session: f"Session: {text}."
+            for session, text in utils.SESSION_DESCRIPTIONS.items()
+        },
+    }
     requirements: tp.ClassVar[tuple[str, ...]] = ("scipy",)
 
-    # One timeline per block (204 across the 13 days). Every timeline emits the same
-    # event families, so timeline 0 exercises all emission paths.
+    # One timeline per block (204 across the 13 days). The query takes one block per
+    # path: open, assisted, closed with a linear decoder and gain, augmented training
+    # data, and a movement strategy.
     _info: tp.ClassVar[study.StudyInfo] = study.StudyInfo(
         num_timelines=204,
         num_subjects=1,
-        query="timeline_index == 0",
-        num_events_in_query=161,
+        query=(
+            "(session == 't5_06_28_2021' and block in [5, 11])"
+            " or (session == 't5_09_13_2021' and block == 12)"
+            " or (session == 't5_09_27_2021' and block == 7)"
+            " or (session == 't5_10_13_2021' and block == 22)"
+        ),
+        num_events_in_query=916,
         event_types_in_query={
             "SpikeCounts",
             "CursorPositionSeries",
             "TargetPositionSeries",
             "Stimulus",
             "Action",
+            "Intertrial",
         },
         frequency=50.0,
     )
 
-    def _download(self) -> None:
+    def _download(self, overwrite: bool = False) -> None:
         """Download the Dryad release into this Study's folder (needs NEURALFETCH_DRYAD_TOKEN)."""
         from neuralshed.datasets.dryad import Dryad
 
@@ -93,35 +132,34 @@ class Deo2024Bimanual(NeuralshedStudy):
             folder=self.path.name,
             doi="10.5061/dryad.sn02v6xbb",
             include=["bimanualData.zip", "README.md"],
-        ).download()
+        ).download(overwrite=overwrite)
 
     # --- timelines: one per (session, block) -----------------------------------
     def iter_timelines(self) -> tp.Iterator[dict[str, tp.Any]]:
         for session in utils.list_sessions(self.path):
             path = utils.session_path(session, self.path)
-            block_numbers = utils.get_block_numbers(path)
-            trials = utils.get_trials(path)
-            for block in sorted(trials["block"].unique()):
-                loop_type = utils.loop_type_of(session, int(block))
-                if loop_type == "unknown":  # transition blocks; no declared condition
-                    continue
-                start_bin, stop_bin = utils.block_bin_range(block_numbers, int(block))
+            for block in map(int, np.unique(utils.get_block_numbers(path))):
                 yield {
                     "subject": _SUBJECT,
                     "session": session,
-                    "block": int(block),
-                    "loop_type": loop_type,
+                    "block": block,
                     "date": utils.session_date(session),
                     "path": path.name,
-                    "start_bin": start_bin,
-                    "stop_bin": stop_bin,
+                    "loop_type": _LOOP_TYPE[utils.SESSION_BLOCKS[session][block]],
+                    "decoder_type": utils.DECODER_TYPES.get(session, {}).get(block),
+                    "decoder_gain": utils.DECODER_GAINS.get(session, {}).get(
+                        block, np.nan
+                    ),
+                    "decoder_training_data": utils.DECODER_TRAINING_DATA.get(
+                        session, {}
+                    ).get(block),
                 }
 
     # --- lazy signal loading ---------------------------------------------------
     def _load_series(self, timeline: dict[str, tp.Any], key: str) -> np.ndarray:
         """SpecialLoader target: one block's stream as dims-first float32."""
         path = self.path / timeline["path"]
-        a, b = timeline["start_bin"], timeline["stop_bin"]
+        a, b = utils.block_bin_range(utils.get_block_numbers(path), timeline["block"])
         if key == "threshold_crossings":
             arr = utils.get_threshold_crossings(path)[a:b]  # (block_bins, 192)
             return np.ascontiguousarray(arr.T, dtype=np.float32)  # (192, block_bins)
@@ -136,7 +174,11 @@ class Deo2024Bimanual(NeuralshedStudy):
         )  # (2, block_bins)
 
     def _continuous_rows(self, timeline: dict[str, tp.Any]) -> list[dict[str, tp.Any]]:
-        duration = (timeline["stop_bin"] - timeline["start_bin"]) / _RATE_HZ
+        path = self.path / timeline["path"]
+        start_bin, stop_bin = utils.block_bin_range(
+            utils.get_block_numbers(path), timeline["block"]
+        )
+        duration = (stop_bin - start_bin) / _RATE_HZ
 
         def row(*, type_: str, key: str, dims=(), unit: str = "", **extra):
             out = {
@@ -163,6 +205,12 @@ class Deo2024Bimanual(NeuralshedStudy):
                 n_features=utils.N_CHANNELS,
                 unit="counts/bin",
                 normalization="raw",
+                processing=(
+                    "analog band-pass filter 0.3-7.5 kHz; "
+                    "digitized at 30 kHz with 250 nV resolution; "
+                    "common average reference within each array; "
+                    "digital high-pass filter at 250 Hz"
+                ),
                 method="threshold_crossing",
                 threshold=f"{utils.THRESHOLD_RMS} x RMS",
             )
@@ -176,6 +224,7 @@ class Deo2024Bimanual(NeuralshedStudy):
                 row(
                     type_=type_,
                     key=key,
+                    feature=f"{source}_position",
                     dims=utils.POSITION_DIMS,
                     unit="a.u.",
                     kind=f"{source}_position",
@@ -188,9 +237,12 @@ class Deo2024Bimanual(NeuralshedStudy):
     # --- trial markers ---------------------------------------------------------
     def _trial_rows(self, timeline: dict[str, tp.Any]) -> list[dict[str, tp.Any]]:
         path = self.path / timeline["path"]
-        start_bin = timeline["start_bin"]
+        start_bin, _ = utils.block_bin_range(
+            utils.get_block_numbers(path), timeline["block"]
+        )
         trials = utils.get_trials(path)
         trials = trials[trials["block"] == timeline["block"]]
+        targets = utils.get_target_positions(path)
 
         rows: list[dict[str, tp.Any]] = []
         for trial_id, t in enumerate(trials.itertuples(index=False)):
@@ -201,26 +253,73 @@ class Deo2024Bimanual(NeuralshedStudy):
                 {
                     "type": "Stimulus",
                     "start": delay_start_s,
-                    "duration": move_end_s - delay_start_s,
+                    "duration": go_s - delay_start_s,
                     "code": int(t.move_type),
                     "description": t.move_type_name,
                     "modality": "visual",
                     "stimulus_kind": "movement_cue",
+                    "task_condition": "na",
+                    "period": "delay",
                     "trial_id": trial_id,
+                    **{
+                        f"target_{dim}": float(value)
+                        for dim, value in zip(
+                            utils.CURSOR_DIMS, targets[:, t.go_cue_bin]
+                        )
+                    },
                 }
             )
             rows.append(
                 {
-                    "type": "Action",
+                    "type": "Stimulus",
                     "start": go_s,
-                    "duration": move_end_s - go_s,
+                    "duration": 1 / _RATE_HZ,
                     "code": int(t.move_type),
-                    "description": f"attempted {utils.MOVE_TYPE_LABEL.get(t.move_type_name, '')} movement",
-                    "task_condition": "attempted",
-                    "action_kind": "cursor_control",
+                    "description": "go cue, beep",
+                    "modality": "audio",
+                    "stimulus_kind": "movement_go_cue",
+                    "task_condition": "na",
+                    "period": "go",
                     "trial_id": trial_id,
                 }
             )
+            action = {
+                "type": "Action",
+                "start": go_s,
+                "duration": move_end_s - go_s,
+                "code": int(t.move_type),
+                "description": f"attempted {utils.MOVE_TYPE_LABEL.get(t.move_type_name, '')} movement",
+                "task_condition": "attempted",
+                "action_kind": "cursor_control",
+                "movement_strategy": utils.MOVEMENT_STRATEGIES.get(
+                    timeline["session"], {}
+                ).get(timeline["block"]),
+                "declared_trial_mix": (
+                    "unimanual_only"
+                    if timeline["block"]
+                    in utils.UNIMANUAL_ONLY_BLOCKS.get(timeline["session"], set())
+                    else "unimanual_and_bimanual"
+                ),
+                "period": "go",
+                "trial_id": trial_id,
+            }
+            # Closed-loop trials end at a 500 ms dwell on both targets or at the timeout.
+            if timeline["loop_type"] != "open":
+                action["success"] = bool(t.move_bins < utils.TIMEOUT_BINS)
+            rows.append(action)
+            if trial_id + 1 < len(trials):
+                next_delay_bin = trials.iloc[trial_id + 1].delay_start_bin
+                rows.append(
+                    {
+                        "type": "Intertrial",
+                        "start": move_end_s,
+                        "duration": (next_delay_bin - t.move_end_bin) / _RATE_HZ,
+                        "description": "between released trials",
+                        "period": "intertrial",
+                        "task_condition": "na",
+                        "trial_id": trial_id,
+                    }
+                )
         return rows
 
     def _load_timeline_events(self, timeline: dict[str, tp.Any]) -> pd.DataFrame:

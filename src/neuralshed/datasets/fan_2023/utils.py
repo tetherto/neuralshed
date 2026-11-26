@@ -75,7 +75,7 @@ INVALID_DAYS: dict[str, str] = {
 }
 
 
-def default_root() -> Path:
+def default_data_dir() -> Path:
     """The Study's data folder, ``<NEURALSHED_DATA_ROOT>/fan_2023/data/Fan2023Handwriting``."""
     from neuralshed.datasets.utils import dataset_dir
 
@@ -121,7 +121,7 @@ def list_sources(root: Path | None = None) -> list[dict]:
 
     ``path`` is relative to ``root``. Raises if a source folder is missing.
     """
-    root = default_root() if root is None else Path(root)
+    root = default_data_dir() if root is None else Path(root)
     rows = []
     for kind, (folder, loop) in DRYAD_FOLDERS.items():
         files = sorted((root / folder).glob("t5.*.mat"))
@@ -175,7 +175,8 @@ def _text(value) -> str:
 @functools.lru_cache(maxsize=2)
 def read_mat(path: str | Path) -> dict:
     """One Dryad file: ``tx_feats`` (list of ``(n_bins, 192)``), ``sentences``, ``blocks``
-    and, on online days, ``rnn_decoded`` / ``lm_decoded``. Cached, a day is parsed once."""
+    and, on online days, ``rnn_decoded`` / ``lm_decoded``. Cached, a day is parsed once.
+    """
     m = sio.loadmat(str(path))
     out = {
         "tx_feats": [np.asarray(x, dtype=np.float32) for x in m["tx_feats"][0]],

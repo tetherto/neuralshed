@@ -26,6 +26,10 @@ STATUSES = {
 MACRO_TASKS = {
     "human_communication",
     "human_motor",
+    "nhp_visual",
+    "nhp_navigation",
+    "nhp_motor",
+    "nhp_learning",
 }
 
 # What a decoder trained on a dataset (or collection) outputs. Names the *output* modality,
@@ -82,6 +86,7 @@ SIGNAL_TYPES = {
     "audio",
     "acoustic_features",
     "synthesized_audio",
+    "mask",
     "other",
 }
 
@@ -89,6 +94,7 @@ SIGNAL_TYPES = {
 # paper's own benchmark label, carried free-form as ``original_split``.
 TASK_CONDITIONS = {
     "attempted",
+    "executed",  # overt movement that actually happened (able-bodied subjects, e.g. monkeys)
     "mimed",
     "imagined",
     "listening",
@@ -132,6 +138,7 @@ EVENT_CLASSES = {
     "ClickAssistSeries",
     "ClickStateSeries",
     "AcousticFeatures",
+    "BinaryMask",
     "Audio",
     "Video",
     "Image",
@@ -156,7 +163,9 @@ EVENT_CLASSES = {
     "Seizure",
     "Background",
     "SleepStage",
+    "ControlMode",
     "Intertrial",
+    "AutoMovement",
 }
 
 # Numpy dtype of the array **as the source ships it**, not as a loader delivers it.

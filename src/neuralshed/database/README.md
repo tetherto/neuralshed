@@ -4,7 +4,7 @@ A searchable index over the curated dataset collection, the queryable counterpar
 
 **First version:** 
 - SQLAlchemy ORM models for the schema
-- SQLite by default, PostgreSQL-ready via a `DATABASE_URL` env var (psycopg driver)
+- SQLite by default, PostgreSQL-ready via a `NEURALSHED_DATABASE_URL` env var (psycopg driver)
 - Alembic for schema versioning. It is populated from each dataset's `metadata.get_metadata()` accessor
 
 ## Layout
@@ -159,7 +159,7 @@ Relationships:
 - `Collection *─* Dataset` through `CollectionDataset` — a saved group of datasets to train one decoder together.
 
 ### `participants` — one row per real person (cross-dataset identity)
-`id` (PK, `<namespace>/<label>`, e.g. `braingate2/T15`) · `label` (T5/T12/HumanPitt) · `namespace` (the clinical trial or lab the participant belongs to, `braingate2` / `pitt`) · `species` (common name — `human`/`mouse`/`rat`/`macaque`/`marmoset`; hard-validated) · `sex` (`M`/`F`/`U`, `U` = unknown/redacted; hard-validated) · `implant_date` (full ISO date `YYYY-MM-DD`, day precision; hard-validated; assumes one implant per person) · `description`. Only person-invariant facts live here — `species`, `sex` and `implant_date` included, since a person cannot have one value in one dataset and another elsewhere. What varies per dataset (age, time since implant) stays on `subjects`. The participant records are the source of truth in [`../datasets/participants.py`](../datasets/participants.py); the dataset-to-person mapping is co-located with each subject as a `participant_id` reference in that dataset's `metadata.py`. `populate` upserts one participant row per referenced id and warns on a subject that declares no reference or references an id not defined in the registry. Query via `query.participants()`.
+`id` (PK, `<namespace>/<label>`, e.g. `braingate2/T15`) · `label` (T5/T12/HumanPitt) · `namespace` (the clinical trial or lab the participant belongs to, `braingate2` / `pitt` / `miller`) · `species` (common name — `human`/`mouse`/`rat`/`macaque`/`marmoset`; hard-validated) · `sex` (`M`/`F`/`U`, `U` = unknown/redacted; hard-validated) · `implant_date` (full ISO date `YYYY-MM-DD`, day precision; hard-validated; assumes one implant per person) · `description`. Only person-invariant facts live here — `species`, `sex` and `implant_date` included, since a person cannot have one value in one dataset and another elsewhere. What varies per dataset (age, time since implant) stays on `subjects`. The participant records are the source of truth in [`../datasets/participants.py`](../datasets/participants.py); the dataset-to-person mapping is co-located with each subject as a `participant_id` reference in that dataset's `metadata.py`. `populate` upserts one participant row per referenced id and warns on a subject that declares no reference or references an id not defined in the registry. Query via `query.participants()`.
 
 The BrainGate2 (NPTL, NCT00912041) `T*` labels are a shared identity across datasets, so `T15` in `card_2024`, `wairagkar_2025`, and `kunz_2025` is one person. The Pitt/FALCON-H1 participant uses a separate numbering (`HumanPitt`) and is unrelated.
 
@@ -172,7 +172,7 @@ The BrainGate2 (NPTL, NCT00912041) `T*` labels are a shared identity across data
 | `source_id` | str | accession / DOI within the platform (e.g. `000954`, `doi:10.5061/dryad.…`) |
 | `source_data_url` | str | resolved full URL to the source data |
 | `status` | str | `not_started` / `onboard_wip` / `onboard_ready` / `study_wip` / `study_ready` / `ml_wip` / `ml_ready` |
-| `macro_task` | str | `human_communication` / `human_motor` |
+| `macro_task` | str | `human_communication` / `human_motor` / `nhp_visual` / `nhp_navigation` / `nhp_motor` / `nhp_learning` |
 | `decode_target` | str | what a decoder trained on this dataset outputs: `text` / `voice` / `movement` / `other`. Names the *output* (attempted-speech-to-text is `text`, not `voice`); the axis that decides which datasets can pool into one decoder. |
 | `bibtex` | str | raw BibTeX entry (the canonical `Study.bibtex`) |
 | `publication_doi`, `code_repo` | str | references (`publication_doi` denormalized from the bibtex `doi=`) |
@@ -250,7 +250,7 @@ python -m neuralshed.database.populate
 
 ### Choosing the backend
 - **SQLite (default):** `src/neuralshed/database/neuralshed_metadata.db`.
-- **PostgreSQL:** `export DATABASE_URL="postgresql+psycopg://user:pass@host:5432/neuralshed"` then run the same `alembic upgrade head` + `populate`. The schema and queries are backend-agnostic.
+- **PostgreSQL:** `export NEURALSHED_DATABASE_URL="postgresql+psycopg://user:pass@host:5432/neuralshed"` then run the same `alembic upgrade head` + `populate`. The schema and queries are backend-agnostic.
 
 ## Querying
 
@@ -315,7 +315,7 @@ alembic -c src/neuralshed/database/alembic.ini upgrade head      # apply
 alembic -c src/neuralshed/database/alembic.ini current   # inspect
 ```
 
-`alembic/env.py` is wired to `schema.Base.metadata` and the app's `DATABASE_URL`, with `render_as_batch=True` for SQLite-safe `ALTER`s.
+`alembic/env.py` is wired to `schema.Base.metadata` and the app's `NEURALSHED_DATABASE_URL`, with `render_as_batch=True` for SQLite-safe `ALTER`s.
 
 
 ## Future work

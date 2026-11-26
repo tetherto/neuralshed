@@ -26,10 +26,11 @@ CHAIN = {
 @pytest.fixture
 def collections(tmp_path, monkeypatch):
     """A throwaway database with just enough catalog to answer the stream check."""
+    from neuralshed.config import DATABASE_URL_VAR
     from neuralshed.database import db
     from neuralshed.database.schema import Base, Dataset, EventType
 
-    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path / 'test.db'}")
+    monkeypatch.setenv(DATABASE_URL_VAR, f"sqlite:///{tmp_path / 'test.db'}")
     monkeypatch.setattr(db, "_engine", None)
     monkeypatch.setattr(db, "_Session", None)
 
@@ -40,7 +41,7 @@ def collections(tmp_path, monkeypatch):
         "card_2024": ["SpikeCounts", "BandPower", "Sentence"],
         "fan_2023": ["SpikeCounts", "Sentence"],  # no band power
         "singer_2025": ["SpikeCounts", "BandPower", "Word"],  # no sentences
-        "fan_h1": ["Spikes", "Action"],  # neither
+        "willsey_2025": ["BandPower", "Action"],  # neither
     }
     from sqlalchemy.orm import sessionmaker
 
@@ -131,15 +132,15 @@ def test_targets_are_required_and_refused_at_save_time(collections):
 
 
 def test_a_member_supplying_no_declared_input_is_reported(collections):
-    """fan_h1 stores spike *times* (`Spikes`), not binned counts, so a collection reading
+    """willsey_2025 releases band power and no spike counts, so a collection reading
     SpikeCounts cannot read it at all."""
     report = collections.check_declared_streams(
-        dataset_ids=["card_2024", "fan_h1"],
+        dataset_ids=["card_2024", "willsey_2025"],
         input_event_types=("SpikeCounts",),
         target_event_types=("Sentence",),
     )
-    assert report["missing_inputs"] == ["fan_h1"]
-    assert report["missing_targets"] == ["fan_h1"]
+    assert report["missing_inputs"] == ["willsey_2025"]
+    assert report["missing_targets"] == ["willsey_2025"]
 
 
 def test_an_unknown_dataset_id_raises(collections):

@@ -11,11 +11,45 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 from neuralset.events import etypes
+from neuralset.events import study as ns_study
 
 from .defaults import TIME_REFERENCE_COLORS, default_event_view_registry
 from .registry import CachingEventDataProvider, EventDataProvider, EventViewContext
 from .registry import EventViewRegistry, EventViewSpec, TimeReference
 from .timeline import plot_event_timeline
+
+_PER_EVENT_COLUMNS = {"timeline", "type", "start", "duration", "stop", "_event_id"}
+
+
+def _timeline_attributes(events: pd.DataFrame) -> dict[str, tp.Any]:
+    """Columns holding one non-empty value on every row of a timeline, in frame order.
+
+    Event-level columns are empty on the rows of other types, so they drop out.
+    """
+    out = {}
+    for column in events.columns:
+        if column in _PER_EVENT_COLUMNS:
+            continue
+        values = events[column]
+        if values.isna().any():
+            continue
+        try:
+            if values.nunique() != 1:
+                continue
+        except TypeError:  # unhashable values, such as lists
+            continue
+        value = values.iloc[0]
+        if isinstance(value, str) and not value:
+            continue
+        out[column] = value
+    return out
+
+
+def _study_class(events: pd.DataFrame) -> type[ns_study.Study] | None:
+    """The registered Study class named by the timeline's ``study`` column."""
+    if events.empty or "study" not in events.columns:
+        return None
+    return ns_study.STUDIES.get(str(events["study"].iloc[0]))
 
 
 def _widgets() -> tuple[tp.Any, tp.Any]:
@@ -35,8 +69,6 @@ class ExplorerState:
     """User-controlled state shared by the sidebar, timeline, and detail pane."""
 
     timeline: tp.Any
-    query: str
-    search: str
     visible_types: set[str]
     lane_order: list[str]
     time_range: tuple[float, float]
@@ -62,8 +94,6 @@ class EventExplorer:
         label: str | None = None,
         data_provider: EventDataProvider | None = None,
         zoom_debounce: float = 0.2,
-        query: str | None = None,
-        search: str | None = None,
         time_range: tuple[float, float] | None = None,
         visible_types: tp.Collection[str] | None = None,
         default_views: tp.Mapping[str, str] | None = None,
@@ -125,15 +155,12 @@ class EventExplorer:
         )
         self.state = ExplorerState(
             timeline=initial_timeline,
-            query=query or "",
-            search=search or "",
             visible_types=chosen_types,
             lane_order=self._ordered_types(available_types),
             time_range=initial_range,
             references=self._coerce_references(references, reference_time),
         )
-        self._query_filtered_events = self._filter_by_text(self.events)
-        self.visible_events = self._filter_visible_types(self._query_filtered_events)
+        self.visible_events = self._filter_visible_types(self.events)
 
         self._context: EventViewContext | None = None
         self._views: dict[str, EventViewSpec] = {}
@@ -144,9 +171,11 @@ class EventExplorer:
         self._updating_controls = False
         self._updating_reference = False
 
-        self.detail_title = widgets.HTML(
-            "<div style='padding:8px 0;color:#666'>Click an event to inspect it.</div>"
+        self.timeline_info = widgets.HTML(
+            self._timeline_info_html(),
+            layout=widgets.Layout(border="1px solid #ddd", padding="8px"),
         )
+        self.detail_title = widgets.HTML("")
         self.view_picker = widgets.Dropdown(
             description="View",
             options=[],
@@ -156,11 +185,16 @@ class EventExplorer:
         self.detail_content = widgets.VBox(
             layout=widgets.Layout(border="1px solid #ddd", padding="8px")
         )
-        detail_children = [self.detail_title]
-        if not self.show_controls:
-            detail_children.append(self.view_picker)
-        detail_children.append(self.detail_content)
-        self.detail = widgets.VBox(detail_children)
+        self.detail_header = widgets.HBox(
+            [self.detail_title, self.view_picker],
+            layout=widgets.Layout(
+                justify_content="space-between", align_items="center"
+            ),
+        )
+        self.event_detail = widgets.VBox([self.detail_header, self.detail_content])
+        self.detail = widgets.Tab(children=[self.timeline_info, self.event_detail])
+        self.detail.set_title(0, "Timeline")
+        self.detail.set_title(1, "Event")
         self.timeline = self._new_timeline_widget()
         self.timeline_host = widgets.VBox(
             [self.timeline],
@@ -300,31 +334,6 @@ class EventExplorer:
     def _ordered_types(self, available: set[str]) -> list[str]:
         named = [name for name in self._initial_lane_order if name in available]
         return named + sorted(available.difference(named))
-
-    def _filter_by_text(
-        self,
-        events: pd.DataFrame,
-        *,
-        query: str | None = None,
-        search: str | None = None,
-    ) -> pd.DataFrame:
-        query = self.state.query if query is None else query
-        search = self.state.search if search is None else search
-        filtered = events
-        if query.strip():
-            filtered = filtered.query(query, engine="python")
-        if search.strip():
-            mask = pd.Series(False, index=filtered.index)
-            for column in ("text", "description", "code", "feature"):
-                if column in filtered:
-                    mask |= (
-                        filtered[column]
-                        .fillna("")
-                        .astype(str)
-                        .str.contains(search, case=False, regex=False)
-                    )
-            filtered = filtered.loc[mask]
-        return filtered.copy()
 
     def _filter_visible_types(self, events: pd.DataFrame) -> pd.DataFrame:
         return events.loc[
@@ -490,27 +499,11 @@ class EventExplorer:
         self.timeline_picker = widgets.Dropdown(
             options=[(str(value), value) for value in self._timeline_values],
             value=self.state.timeline,
-            description="Timeline",
-            layout=widgets.Layout(width="100%"),
+            layout=widgets.Layout(width="100%", margin="0 0 8px"),
         )
         self.timeline_picker.layout.display = (
             "" if len(self._timeline_values) > 1 else "none"
         )
-        self.query_input = widgets.Textarea(
-            value=self.state.query,
-            placeholder='e.g. type == "Action" and duration > 1',
-            layout=widgets.Layout(width="100%", height="56px", margin="0"),
-        )
-        self.search_input = widgets.Text(
-            value=self.state.search,
-            placeholder="Search text, description, code, feature",
-            layout=widgets.Layout(width="100%", margin="0"),
-        )
-        self.apply_filter_button = widgets.Button(
-            description="Apply", button_style="primary"
-        )
-        self.reset_filter_button = widgets.Button(description="Reset")
-        self.query_status = widgets.HTML(layout=widgets.Layout(margin="0"))
 
         self.type_box = widgets.VBox(
             layout=widgets.Layout(
@@ -577,16 +570,6 @@ class EventExplorer:
         )
         self.reference_status = widgets.HTML(layout=widgets.Layout(margin="0"))
 
-        self.selection_summary = widgets.HTML(
-            "<span style='color:#666'>No event selected</span>"
-        )
-        self.view_picker.description = "View"
-        self.view_picker.layout.width = "100%"
-
-        self.filter_actions = widgets.HBox(
-            [self.apply_filter_button, self.reset_filter_button],
-            layout=widgets.Layout(margin="0"),
-        )
         self.lane_actions = widgets.HBox(
             [self.lane_up_button, self.lane_down_button],
             layout=widgets.Layout(margin="0"),
@@ -595,10 +578,6 @@ class EventExplorer:
         self.filter_tab = widgets.VBox(
             [
                 self.timeline_picker,
-                self.query_input,
-                self.search_input,
-                self.filter_actions,
-                self.query_status,
                 self.type_box,
                 self.lane_picker,
                 self.lane_actions,
@@ -614,8 +593,6 @@ class EventExplorer:
                 self.add_reference_button,
                 self.reference_box,
                 self.reference_status,
-                self.selection_summary,
-                self.view_picker,
             ],
             layout=widgets.Layout(width="100%", padding="4px 4px 0"),
         )
@@ -644,8 +621,6 @@ class EventExplorer:
         )
 
         self.timeline_picker.observe(self._on_timeline_change, names="value")
-        self.apply_filter_button.on_click(self._on_apply_filters)
-        self.reset_filter_button.on_click(self._on_reset_filters)
         self.lane_up_button.on_click(lambda _button: self._move_lane(-1))
         self.lane_down_button.on_click(lambda _button: self._move_lane(1))
         self.time_slider.observe(self._on_time_slider, names="value")
@@ -655,12 +630,11 @@ class EventExplorer:
         self.add_reference_button.on_click(self._on_add_reference)
         self._rebuild_type_controls()
         self._rebuild_reference_controls()
-        self._update_filter_status()
         return sidebar
 
     def _rebuild_type_controls(self) -> None:
         widgets, _ = _widgets()
-        counts = self._query_filtered_events["type"].astype(str).value_counts()
+        counts = self.events["type"].astype(str).value_counts()
         checks = []
         self._type_checks: dict[str, tp.Any] = {}
         for event_type in self.state.lane_order:
@@ -782,7 +756,7 @@ class EventExplorer:
             self.state.visible_types.add(event_type)
         else:
             self.state.visible_types.discard(event_type)
-        self.visible_events = self._filter_visible_types(self._query_filtered_events)
+        self.visible_events = self._filter_visible_types(self.events)
         self._after_visibility_change()
 
     def _move_lane(self, direction: int) -> None:
@@ -801,39 +775,6 @@ class EventExplorer:
         self.lane_picker.value = selected
         self._replace_timeline()
 
-    def _on_apply_filters(self, _button: tp.Any) -> None:
-        query = self.query_input.value.strip()
-        search = self.search_input.value.strip()
-        try:
-            filtered = self._filter_by_text(
-                self.events,
-                query=query,
-                search=search,
-            )
-        except Exception as exc:
-            self.query_status.value = (
-                "<span style='color:#a33'>"
-                f"Could not apply query: {html.escape(str(exc))}</span>"
-            )
-            return
-        self.state.query = query
-        self.state.search = search
-        self._query_filtered_events = filtered
-        self.visible_events = self._filter_visible_types(filtered)
-        self._rebuild_type_controls()
-        self._after_visibility_change()
-
-    def _on_reset_filters(self, _button: tp.Any) -> None:
-        self.query_input.value = ""
-        self.search_input.value = ""
-        self.state.query = ""
-        self.state.search = ""
-        self._query_filtered_events = self.events.copy()
-        self.state.visible_types = set(self.events["type"].astype(str))
-        self.visible_events = self.events.copy()
-        self._rebuild_type_controls()
-        self._after_visibility_change()
-
     def _after_visibility_change(self) -> None:
         visible_ids = set(self.visible_events["_event_id"].astype(int))
         if (
@@ -842,14 +783,6 @@ class EventExplorer:
         ):
             self._clear_selection()
         self._replace_timeline()
-        self._update_filter_status()
-        self._update_selection_controls()
-
-    def _update_filter_status(self) -> None:
-        self.query_status.value = (
-            "<span style='color:#666'>"
-            f"Showing {len(self.visible_events)} of {len(self.events)} events</span>"
-        )
 
     def _on_timeline_change(self, change: dict[str, tp.Any]) -> None:
         if self._updating_controls or change.get("new") == self.state.timeline:
@@ -869,24 +802,60 @@ class EventExplorer:
             else available_types & previous_visible_types
         )
         self.state.lane_order = self._ordered_types(available_types)
-        try:
-            self._query_filtered_events = self._filter_by_text(self.events)
-        except Exception as exc:
-            self.state.query = ""
-            self.query_input.value = ""
-            self._query_filtered_events = self._filter_by_text(self.events, query="")
-            self.query_status.value = (
-                "<span style='color:#a33'>Query was reset for this timeline: "
-                f"{html.escape(str(exc))}</span>"
-            )
-        self.visible_events = self._filter_visible_types(self._query_filtered_events)
+        self.visible_events = self._filter_visible_types(self.events)
         self.visible_time_range = self._full_time_range
         self._clear_selection()
         self._rebuild_type_controls()
         self._sync_time_controls()
         self._sync_reference_controls()
         self._replace_timeline()
-        self._update_filter_status()
+        self.timeline_info.value = self._timeline_info_html()
+        self.detail.selected_index = 0
+
+    def _timeline_info_html(self) -> str:
+        # Break long ids and values instead of scrolling in narrow windows.
+        return (
+            "<div style='overflow-wrap:anywhere;min-width:0'>"
+            + self._timeline_info_body()
+            + "</div>"
+        )
+
+    def _timeline_info_body(self) -> str:
+        attributes = _timeline_attributes(self.events)
+        sections = []
+        study_class = _study_class(self.events)
+        if study_class is not None:
+            sections.append(
+                "<div style='padding:0 0 6px'><b>Study</b> "
+                f"<code>{html.escape(study_class.__name__)}</code>"
+                f"<div>{html.escape(study_class.description)}</div></div>"
+            )
+        describe = getattr(study_class, "describe_timeline", None)
+        paragraph = describe(attributes) if describe is not None else ""
+        sections.append(
+            "<div style='padding:0 0 6px'><b>Timeline</b> "
+            f"<code>{html.escape(str(self.state.timeline))}</code>"
+            + (f"<div>{html.escape(paragraph)}</div>" if paragraph else "")
+            + "</div>"
+        )
+        if not attributes:
+            return "".join(sections) + "<i>No timeline-level attributes.</i>"
+        items = []
+        for key, value in attributes.items():
+            text = (
+                f"{value:g}" if isinstance(value, (float, np.floating)) else str(value)
+            )
+            style = "color:#a33" if key == "valid" and not value else ""
+            items.append(
+                f"<div style='{style}'><span style='color:#666'>{html.escape(key)}</span>"
+                f" {html.escape(text)}</div>"
+            )
+        grid = (
+            "<div style='display:grid;"
+            "grid-template-columns:repeat(auto-fill,minmax(min(260px,100%),1fr));"
+            "gap:2px 16px'>" + "".join(items) + "</div>"
+        )
+        return "".join(sections) + grid
 
     def _sync_time_controls(self) -> None:
         if not hasattr(self, "time_slider"):
@@ -1146,27 +1115,6 @@ class EventExplorer:
             return
         self._refresh_active_view()
 
-    def _update_selection_controls(self) -> None:
-        if not hasattr(self, "selection_summary"):
-            return
-        selected = self.selected_event_id
-        if selected is None:
-            self.selection_summary.value = (
-                "<span style='color:#666'>No event selected</span>"
-            )
-            return
-        match = self.events.loc[self.events["_event_id"] == selected]
-        if match.empty:
-            return
-        row = match.iloc[0]
-        start = float(row["start"])
-        duration_value = row.get("duration", 0)
-        duration = 0.0 if pd.isna(duration_value) else float(duration_value)
-        self.selection_summary.value = (
-            f"<b>{html.escape(str(row['type']))}</b><br>"
-            f"{start:.3f}–{start + duration:.3f} s · event {selected}"
-        )
-
     def _clear_selection(self) -> None:
         if self._zoom_task is not None and not self._zoom_task.done():
             self._zoom_task.cancel()
@@ -1177,9 +1125,7 @@ class EventExplorer:
         self._context = None
         self._views = {}
         self._active_view = None
-        self.detail_title.value = (
-            "<div style='padding:8px 0;color:#666'>Click an event to inspect it.</div>"
-        )
+        self.detail_title.value = ""
         self._updating_picker = True
         self.view_picker.options = []
         self.view_picker.layout.display = "none"
@@ -1188,7 +1134,6 @@ class EventExplorer:
         self.detail_content.children = ()
         for child in previous:
             child.close()
-        self._update_selection_controls()
 
     def _on_visible_range(self, _layout: tp.Any, value: tp.Any) -> None:
         if value is not None and len(value) == 2:
@@ -1269,7 +1214,7 @@ class EventExplorer:
         self.detail_title.value = (
             "<div style='padding:8px 0'>"
             f"<b>{html.escape(type(event).__name__)}</b>"
-            f" · {event.start:.3f}–{event.stop:.3f} s"
+            f" · {event.start:.3f}–{event.stop:.3f} s · event {event_id}"
             "</div>"
         )
         self._updating_picker = True
@@ -1283,7 +1228,7 @@ class EventExplorer:
         self.view_picker.layout.display = "" if len(views) > 1 else "none"
         self._updating_picker = False
         self._render(selected_view)
-        self._update_selection_controls()
+        self.detail.selected_index = 1
 
     def _on_view_change(self, change: dict[str, tp.Any]) -> None:
         if self._updating_picker or change.get("new") is None:
@@ -1357,8 +1302,6 @@ def explore_events(
     label: str | None = None,
     data_provider: EventDataProvider | None = None,
     zoom_debounce: float = 0.2,
-    query: str | None = None,
-    search: str | None = None,
     time_range: tuple[float, float] | None = None,
     visible_types: tp.Collection[str] | None = None,
     default_views: tp.Mapping[str, str] | None = None,
@@ -1374,7 +1317,7 @@ def explore_events(
 ) -> EventExplorer:
     """Create a live-kernel dashboard for one or more event timelines.
 
-    Query, search, and type controls filter visible marks only. Detail renderers retain
+    Type controls filter visible marks only. Detail renderers retain
     the complete active timeline so ``EventViewContext.related`` can still find hidden
     contextual streams.
     """
@@ -1385,8 +1328,6 @@ def explore_events(
         label=label,
         data_provider=data_provider,
         zoom_debounce=zoom_debounce,
-        query=query,
-        search=search,
         time_range=time_range,
         visible_types=visible_types,
         default_views=default_views,

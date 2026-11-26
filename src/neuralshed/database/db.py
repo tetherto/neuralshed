@@ -1,6 +1,6 @@
 """Engine / session factory for the metadata database.
 
-Backend is chosen by the ``DATABASE_URL`` environment variable:
+Backend is chosen by the ``NEURALSHED_DATABASE_URL`` environment variable:
 
 - unset (default) -> a local SQLite file ``neuralshed/database/neuralshed_metadata.db``
 - ``postgresql+psycopg://user:pass@host/dbname`` -> PostgreSQL via psycopg
@@ -16,13 +16,15 @@ from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
+from neuralshed.config import DATABASE_URL_VAR
+
 #: Default on-disk SQLite location (next to this package).
 DEFAULT_SQLITE_PATH = Path(__file__).resolve().parent / "neuralshed_metadata.db"
 
 
 def database_url() -> str:
-    """Return the configured database URL (env ``DATABASE_URL`` or the SQLite default)."""
-    return os.environ.get("DATABASE_URL", f"sqlite:///{DEFAULT_SQLITE_PATH}")
+    """Return the configured database URL (env or the SQLite default)."""
+    return os.environ.get(DATABASE_URL_VAR) or f"sqlite:///{DEFAULT_SQLITE_PATH}"
 
 
 _engine: Engine | None = None

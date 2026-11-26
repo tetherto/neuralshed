@@ -123,6 +123,105 @@ class Kunz2025InnerSpeech(NeuralshedStudy):
         "power (128/256 ch) with per-trial word / sentence / movement-sequence cues. 69 "
         "files, 243 block timelines (Kunz et al. 2025, Cell 188)."
     )
+    timeline_descriptions: tp.ClassVar[dict[str, dict[tp.Any, str]]] = {
+        "experiment": {
+            "isolatedVerbalBehaviors": (
+                "In the isolated verbal behaviors task, the participant performs one "
+                "behavior on seven single-syllable words (ban, choice, day, feel, kite, "
+                "though, were), with DO_NOTHING rest trials mixed in. Each block holds one "
+                "behavior, named in the behavior column of its Word rows: attempted "
+                "vocalized, mimed, motoric inner speech, auditory inner speech, imagined "
+                "listening, passive listening or silent reading. Active blocks cue the "
+                "word over an instructed delay and the behavior follows a go cue. "
+                "Listening and reading blocks present the word with no delay or go cue."
+            ),
+            "interleavedVerbalBehaviors": (
+                "In the interleaved verbal behaviors task, the seven words are cued with "
+                "three behaviors intermixed within a block, plus rest trials: attempted "
+                "speech (mimed for T16), one inner-speech behavior and passive listening. "
+                "The inner-speech behavior is motoric for T12, auditory for T16 and "
+                "imagined listening for T15 and T17. T12's listening trials have no delay "
+                "or go cue."
+            ),
+            "sentenceData": (
+                "In the sentence task, a sentence is shown during an instructed delay and "
+                "the participant attempts or imagines speaking it in a self-paced go "
+                "period. The session name says which. For imagined sentences T12 uses "
+                "motoric inner speech, T16 auditory inner speech, and T15 motoric inner "
+                "speech or, in the 125k sessions, a hybrid of motoric imagery and "
+                "imagined listening."
+            ),
+            "chittychittybangbang": (
+                "In the keyword task, T12 imagines speaking a displayed sentence in a "
+                "self-paced go period. On 344 of the 680 trials, whose cue starts with *, "
+                'T12 first imagines the unlock keyword "chittychittybangbang".'
+            ),
+            "conjunctiveCounting": (
+                "In the counting task, a grid of shapes is shown and the participant "
+                "silently counts the items of a cued shape and color (10-20 targets), "
+                "ending the count at will. The participant then says the count aloud. "
+                "There is no go cue."
+            ),
+            "seqRecallUninstructed3ElementArrow": (
+                "In the three-arrow sequence task, a sequence of three arrows is cued "
+                "during an instructed delay, with no instruction on how to hold it in "
+                "mind. After the go cue T12 reproduces it with a joystick and T16 "
+                "attempts to draw it. T12's blocks use 64 sequences of four directions "
+                "plus rest, T16's use 8 sequences of up and right arrows."
+            ),
+            "seqRecallUninstructedSingleArrow": (
+                "In the single-arrow task, T12 sees one arrow (up, down, left or right) or "
+                "a rest cue during an instructed delay and moves a joystick in that "
+                "direction after the go cue."
+            ),
+            "seqRecallUninstructed3ElementLines": (
+                "In the line sequence task, a sequence of line segments is cued during an "
+                "instructed delay, with no instruction on how to hold it in mind, and an "
+                "audible go cue follows. T12 draws it with a stylus from 49 cues (32 "
+                "three-segment sequences including diagonals, 16 two-segment sequences "
+                "and rest), then has a 1.5 s return period to bring the pen back. T16 "
+                "attempts to draw 8 three-segment sequences of up and right lines."
+            ),
+            "seqRecallVerbalMemory": (
+                "In the verbal memory sequence task, the participant holds a cued "
+                "sequence of three up or right arrows in inner speech over the delay and "
+                "draws it after the go cue. T12 draws and then has a 1.5 s return period, "
+                "T16 attempts to draw."
+            ),
+            "seqRecallVisualMemory": (
+                "In the visual memory sequence task, the participant holds a cued "
+                "sequence of three up or right arrows as a visual image over the delay "
+                "and draws it after the go cue. T12 draws and then has a 1.5 s return "
+                "period, T16 attempts to draw."
+            ),
+            "seqRecallSpeech": (
+                "In the spoken sequence task, the participant says the cued directions "
+                "aloud after the go cue. T12 hears a sequence of three directions (up or "
+                "right) during the delay. T16 reads one direction word, or a rest cue, "
+                "per trial."
+            ),
+        },
+        "vocab": {
+            "50w": "The sentences in this block use the 50-word vocabulary.",
+            "125k": "The sentences in this block use the 125,000-word vocabulary.",
+        },
+        "loop_type": {
+            "closed": (
+                "This closed-loop block ran a real-time decoder, an RNN with a language "
+                "model, on each sentence."
+            ),
+        },
+        "mean_subtracted": {
+            True: (
+                "The neural features of this block are mean-subtracted per block, so they "
+                "hold negative values and their scale differs from the raw families."
+            ),
+            False: (
+                "The neural features of this block are raw threshold-crossing counts and "
+                "spike-band power in µV²."
+            ),
+        },
+    }
     requirements: tp.ClassVar[tuple[str, ...]] = ("scipy",)
     _info: tp.ClassVar[study.StudyInfo] = study.StudyInfo(
         num_timelines=243,

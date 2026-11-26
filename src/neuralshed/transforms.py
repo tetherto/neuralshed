@@ -552,9 +552,7 @@ class AssignDataLayouts(ns.EventsTransform):
             event_type: (
                 "both"
                 if event_type in inputs and event_type in targets
-                else "input"
-                if event_type in inputs
-                else "target"
+                else "input" if event_type in inputs else "target"
             )
             for event_type in inputs | targets
         }

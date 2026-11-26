@@ -1,7 +1,7 @@
 """neuralshed metadata database — a searchable index over the curated dataset collection.
 
 First version (SOW §3.2): SQLAlchemy ORM, SQLite by default and PostgreSQL-ready
-via the ``DATABASE_URL`` environment variable. See ``README.md``.
+via the ``NEURALSHED_DATABASE_URL`` environment variable. See ``README.md``.
 
 Typical use::
 

@@ -7,10 +7,15 @@ import numpy as np
 from neuralshed.datasets import participants
 from neuralshed.datasets.utils import dataset_dir
 
+
 # --- Constants -----------------------------------------------------------------
 # Data lands in the framework study-folder (.../data/Card2024Brain2Text/); the Dryad
 # neural-data zip nests the session dirs one level deeper (see sessions_dir).
-DATA_DIR = dataset_dir("card_2024") / "data" / "Card2024Brain2Text"
+def default_data_dir() -> Path:
+    """This dataset's data folder under ``NEURALSHED_DATA_ROOT``."""
+    return dataset_dir("card_2024") / "data" / "Card2024Brain2Text"
+
+
 PARTICIPANT_ID = "braingate2/T15"  # datasets/participants.py
 
 N_ELECTRODES = 256  # 4 Utah arrays x 64 electrodes
@@ -26,6 +31,15 @@ N_SPIKE_BAND_POWER = 256
 N_FEATURES = N_THRESHOLD_CROSSINGS + N_SPIKE_BAND_POWER  # 512
 NEURAL_BIN_SIZE_MS = 20  # 20 ms non-overlapping bins
 FS_NEURAL = 50  # Hz
+
+# Wairagkar et al. 2025, Methods: "After the initial eight research sessions with a mix of
+# open-loop and closed-loop blocks, all cued sentence trials in the rest of the sessions
+# were conducted with either closed-loop voice synthesis, closed-loop text decoding or
+# both." The eighth session is post-implant day 48 and the paper reports data through day
+# 489. Timelines outside days 49-489 carry no loop_type.
+LAST_MIXED_LOOP_DAY = 48
+LAST_REPORTED_LOOP_DAY = 489
+
 SPLITS = ("train", "val", "test")
 
 # seq_class_ids: 0 = BLANK/pad, 1-39 = ARPAbet phonemes, 40 = word boundary "|".
@@ -119,16 +133,18 @@ class SessionRef:
         return tuple(s for s in SPLITS if self.split_path(s).exists())
 
 
-def sessions_dir(base: str | Path = DATA_DIR) -> Path:
+def sessions_dir(base: str | Path | None = None) -> Path:
     """Dir holding the ``t15.*`` session folders. The Dryad neural-data zip wraps
     them in ``hdf5_data_final/``; fall back to ``base`` when already flattened."""
+    base = default_data_dir() if base is None else base
     base = Path(base)
     nested = base / "hdf5_data_final"
     return nested if nested.is_dir() else base
 
 
-def list_sessions(data_dir: str | Path = DATA_DIR) -> list[SessionRef]:
+def list_sessions(data_dir: str | Path | None = None) -> list[SessionRef]:
     """All session folders, sorted chronologically by name."""
+    data_dir = default_data_dir() if data_dir is None else data_dir
     data_dir = sessions_dir(data_dir)
     refs = [
         SessionRef(session=p.name, dir=p)
@@ -136,6 +152,13 @@ def list_sessions(data_dir: str | Path = DATA_DIR) -> list[SessionRef]:
         if p.is_dir() and p.name.startswith("t15.")
     ]
     return sorted(refs, key=lambda r: r.session)
+
+
+def loop_type_entry(post_implant_day: int) -> dict[str, str]:
+    """``{"loop_type": "closed"}`` on days 49-489, empty outside them."""
+    if LAST_MIXED_LOOP_DAY < post_implant_day <= LAST_REPORTED_LOOP_DAY:
+        return {"loop_type": "closed"}
+    return {}
 
 
 # --- Per-session / per-trial accessors -----------------------------------------
@@ -231,8 +254,9 @@ def iter_trials(ref: SessionRef, split: str = "train"):
             yield _trial_from_group(f[key])
 
 
-def session_summary(data_dir: str | Path = DATA_DIR) -> list[dict]:
+def session_summary(data_dir: str | Path | None = None) -> list[dict]:
     """One row per existing ``data_{split}.hdf5``: ``session``, ``split``, ``n_trials``."""
+    data_dir = default_data_dir() if data_dir is None else data_dir
     rows = []
     for ref in list_sessions(data_dir):
         for split in ref.splits:

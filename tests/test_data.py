@@ -28,13 +28,15 @@ from neuralshed.transforms import AssignDataLayouts, CombineStudies
 
 class _DataFrameStep(ns.Step):
     filepath: str = ""
+    n_features: int = 2
+    timeline: str = "recording"
 
     def _run(self):
         return pd.DataFrame(
             [
                 {
                     "type": "SpikeCounts",
-                    "timeline": "recording",
+                    "timeline": self.timeline,
                     "start": 0.0,
                     "duration": 3.0,
                     "frequency": 10.0,
@@ -43,13 +45,13 @@ class _DataFrameStep(ns.Step):
                     "participant_id": "P1",
                     "session": "S1",
                     "feature": "threshold_crossings",
-                    "n_features": 2,
+                    "n_features": self.n_features,
                     "unit": "counts/bin",
                     "normalization": "raw",
                 },
                 {
                     "type": "Sentence",
-                    "timeline": "recording",
+                    "timeline": self.timeline,
                     "start": 0.0,
                     "duration": 1.0,
                     "participant_id": "P1",
@@ -59,7 +61,7 @@ class _DataFrameStep(ns.Step):
                 },
                 {
                     "type": "Sentence",
-                    "timeline": "recording",
+                    "timeline": self.timeline,
                     "start": 1.0,
                     "duration": 1.0,
                     "participant_id": "P1",
@@ -69,7 +71,7 @@ class _DataFrameStep(ns.Step):
                 },
                 {
                     "type": "Sentence",
-                    "timeline": "recording",
+                    "timeline": self.timeline,
                     "start": 2.0,
                     "duration": 1.0,
                     "participant_id": "P1",
@@ -247,6 +249,60 @@ def test_collection_data_builds_native_batching_without_metadata_sampler(tmp_pat
     assert built.contract.batch_group_by == ()
     assert built.loaders["train"].batch_size == 2
     assert next(iter(built.loaders["val"])).metadata["split"] == ["val"]
+
+
+def test_collection_data_mixes_channel_widths_in_one_batch(tmp_path):
+    narrow, wide = tmp_path / "narrow.npy", tmp_path / "wide.npy"
+    np.save(narrow, np.ones((2, 30), dtype=np.float32))
+    np.save(wide, np.ones((3, 30), dtype=np.float32))
+    collection = Collection(
+        steps={
+            "CombineStudies": CombineStudies(
+                chains={
+                    "narrow": _DataFrameStep(filepath=str(narrow), timeline="a"),
+                    "wide": _DataFrameStep(
+                        filepath=str(wide), n_features=3, timeline="b"
+                    ),
+                }
+            ),
+            "AssignDataLayouts": AssignDataLayouts(
+                inputs=("SpikeCounts",),
+                targets=("Sentence",),
+                group_by=("participant_id", "collection_member", "session"),
+            ),
+        }
+    )
+    config = CollectionData(
+        collection=collection,
+        segmenter=_segmenter(),
+        collator=RaggedCollatorConfig(
+            fields={
+                "spikes": PadSpec(axis=-1, extra_axes=(0,)),
+                "target": PadSpec(axis=0),
+            }
+        ),
+        standard_batch_size=2,
+        shuffle_splits=(),
+    )
+    assert CollectionData.model_validate(config.model_dump()).collator == (
+        config.collator
+    )
+
+    built = config.build()
+    batch = next(iter(built.loaders["train"]))
+
+    assert sorted(batch.metadata["collection_member"]) == ["narrow", "wide"]
+    assert batch.data["spikes"].shape == (2, 3, 10)
+    widths = dict(
+        zip(batch.metadata["collection_member"], batch.extra_lengths["spikes"][0])
+    )
+    assert {member: int(width) for member, width in widths.items()} == {
+        "narrow": 2,
+        "wide": 3,
+    }
+    spikes = built.contract.fields["spikes"]
+    assert sorted(spikes.feature_widths.values()) == [2, 3]
+    assert spikes.padding == PadSpec(axis=-1, pad_value=0, extra_axes=(0,))
 
 
 def test_build_requires_every_requested_split_to_have_segments(tmp_path):

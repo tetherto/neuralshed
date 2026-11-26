@@ -37,7 +37,8 @@ DATASET_METADATA = {
     "competitionData are out of scope. "
     "The Study emits the neural rows in array order, one contiguous block of 64 per "
     "array (utils.CHANNEL_ORDER), not in the file order of the source .mat matrices; "
-    "the channel ranges below are array-order columns.",
+    "the channel ranges below are array-order columns. Each array is in the grid order "
+    "of the authors' unscrambleChans.",
     "subjects": [
         {
             "label": "T12",
@@ -54,7 +55,7 @@ DATASET_METADATA = {
             ],
             "arrays": [
                 {
-                    "name": "dorsal_6v",
+                    "name": "ventral_6v",
                     "hemisphere": "left",
                     "device_type": "utah_array",
                     "n_channels": 64,
@@ -63,7 +64,7 @@ DATASET_METADATA = {
                     "brain_area": "area 6v, left ventral precentral gyrus",
                 },
                 {
-                    "name": "ventral_6v",
+                    "name": "dorsal_6v",
                     "hemisphere": "left",
                     "device_type": "utah_array",
                     "n_channels": 64,
@@ -72,7 +73,7 @@ DATASET_METADATA = {
                     "brain_area": "area 6v, left ventral precentral gyrus",
                 },
                 {
-                    "name": "dorsal_44",
+                    "name": "ventral_44",
                     "hemisphere": "left",
                     "device_type": "utah_array",
                     "n_channels": 64,
@@ -81,7 +82,7 @@ DATASET_METADATA = {
                     "brain_area": "area 44, left inferior frontal gyrus (Broca's area)",
                 },
                 {
-                    "name": "ventral_44",
+                    "name": "dorsal_44",
                     "hemisphere": "left",
                     "device_type": "utah_array",
                     "n_channels": 64,
@@ -197,7 +198,7 @@ def sessions() -> list[dict]:
     from . import utils
 
     rows = []
-    for row in utils.session_summary(utils.source_root()):
+    for row in utils.session_summary(utils.default_data_dir()):
         label = row["session"]
         date = utils.session_date(label)
         mimed = "nonvocal" in row["speaking_mode"].lower()

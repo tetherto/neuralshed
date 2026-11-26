@@ -15,6 +15,12 @@ from neuralshed import events as _neuralshed_events  # noqa: F401
 
 _REQUIRED_COLUMNS = {"timeline", "type", "start", "duration"}
 
+# The attribute that tells rows of one type apart. A type with more than one value in
+# the timeline gets a lane per value, so a short cue is not hidden under a longer one.
+# Other types split by `effector`, which deo_2024 sets on its per-hand position streams.
+_KIND_COLUMNS = {"Stimulus": "stimulus_kind", "Action": "action_kind"}
+_DEFAULT_KIND_COLUMN = "effector"
+
 
 def _validate(events: pd.DataFrame) -> None:
     missing = _REQUIRED_COLUMNS - set(events.columns)
@@ -49,14 +55,44 @@ def _hover(row: pd.Series) -> str:
         f"start: {start:.3f}s",
         f"duration: {duration:.3f}s",
     ]
-    for field in ("text", "description", "code", "feature", "unit"):
+    fields = (
+        "period",
+        "trial_id",
+        "text",
+        "description",
+        "code",
+        "condition",
+        "feature",
+        "effector",
+        "unit",
+    )
+    for field in fields:
         value = row.get(field)
         if value is None or (isinstance(value, float) and pd.isna(value)):
             continue
+        # Integer columns turn float when other rows leave them empty.
+        if isinstance(value, float) and value.is_integer():
+            value = int(value)
         text = str(value)
         if text:
             lines.append(f"{field}: {html.escape(text)}")
     return "<br>".join(lines)
+
+
+def _lanes(frame: pd.DataFrame) -> pd.Series:
+    """Lane name per row: the event type, split by kind where the type has several."""
+    types = frame["type"].astype(str)
+    lanes = types.copy()
+    for event_type in types.unique():
+        column = _KIND_COLUMNS.get(event_type, _DEFAULT_KIND_COLUMN)
+        rows = types == event_type
+        if column not in frame or frame.loc[rows, column].dropna().nunique() < 2:
+            continue
+        kinds = frame.loc[rows, column]
+        lanes[rows] = np.where(
+            kinds.notna(), event_type + " · " + kinds.astype(str), event_type
+        )
+    return lanes
 
 
 def _title(events: pd.DataFrame, label: str | None) -> str:
@@ -77,9 +113,14 @@ def plot_event_timeline(
 ) -> go.Figure:
     """Plot one timeline with stable event ids attached to every clickable item.
 
-    Unlike neuralset's current ``plot_events``, events of one type share a trace. This keeps
-    the trace count proportional to event types rather than event rows. ``customdata`` maps
+    Unlike neuralset's current ``plot_events``, events of one lane share a trace. This keeps
+    the trace count proportional to lanes rather than event rows. ``customdata`` maps
     back to ``_event_id`` when present, or otherwise to the dataframe row position.
+
+    Each type has one lane. ``Stimulus`` and ``Action`` rows split into one lane per
+    ``stimulus_kind`` or ``action_kind`` when the timeline has more than one, labelled
+    ``"Stimulus · target_cue"``. Other types split the same way by ``effector``.
+    ``lanes`` orders types, and a type's lanes stay together.
     """
     _validate(events)
     frame = events.reset_index(drop=True)
@@ -88,15 +129,22 @@ def plot_event_timeline(
         if "_event_id" in frame
         else np.arange(len(frame))
     )
-    event_types = sorted(frame["type"].astype(str).unique())
+    types = frame["type"].astype(str)
+    lanes_by_row = _lanes(frame)
+    event_types = sorted(types.unique())
     colors = {
         event_type: f"hsl({i * 360 // max(len(event_types), 1)}, 65%, 55%)"
         for i, event_type in enumerate(event_types)
     }
+    lanes_of = {
+        event_type: sorted(lanes_by_row[types == event_type].unique())
+        for event_type in event_types
+    }
+    typed_lanes = [(t, lane) for t in event_types for lane in lanes_of[t]]
     fig = go.Figure()
 
-    for event_type in event_types:
-        positions = np.flatnonzero(frame["type"].astype(str).to_numpy() == event_type)
+    for event_type, lane in typed_lanes:
+        positions = np.flatnonzero(lanes_by_row.to_numpy() == lane)
         subset = frame.iloc[positions]
         durations = subset["duration"].fillna(0).astype(float)
 
@@ -107,7 +155,7 @@ def plot_event_timeline(
             fig.add_trace(
                 go.Bar(
                     x=spans["duration"].astype(float),
-                    y=[event_type] * len(spans),
+                    y=[lane] * len(spans),
                     base=spans["start"].astype(float),
                     customdata=span_positions,
                     ids=[str(x) for x in span_positions],
@@ -119,7 +167,7 @@ def plot_event_timeline(
                     textfont_size=9,
                     hovertext=[_hover(row) for _, row in spans.iterrows()],
                     hoverinfo="text",
-                    name=event_type,
+                    name=lane,
                     showlegend=False,
                     width=0.6,
                 )
@@ -132,7 +180,7 @@ def plot_event_timeline(
             fig.add_trace(
                 go.Scatter(
                     x=points["start"].astype(float),
-                    y=[event_type] * len(points),
+                    y=[lane] * len(points),
                     customdata=point_positions,
                     ids=[str(x) for x in point_positions],
                     mode="markers",
@@ -144,14 +192,15 @@ def plot_event_timeline(
                     },
                     hovertext=[_hover(row) for _, row in points.iterrows()],
                     hoverinfo="text",
-                    name=event_type,
+                    name=lane,
                     showlegend=False,
                 )
             )
 
     present = set(event_types)
     named = [name for name in lanes or () if name in present]
-    lane_order = named + sorted(present.difference(named))
+    type_order = named + sorted(present.difference(named))
+    lane_order = [lane for event_type in type_order for lane in lanes_of[event_type]]
     starts = frame["start"].astype(float)
     stops = starts + frame["duration"].fillna(0).astype(float)
     fig.update_layout(
@@ -163,7 +212,7 @@ def plot_event_timeline(
             "categoryarray": list(reversed(lane_order)),
         },
         barmode="overlay",
-        height=max(250, len(event_types) * 50 + 100),
+        height=max(250, len(lane_order) * 50 + 100),
         margin={"l": 120, "r": 30, "t": 50, "b": 50},
         plot_bgcolor="white",
         clickmode="event+select",

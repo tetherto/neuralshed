@@ -15,7 +15,7 @@ Intracortical BCI recordings of attempted handwriting from one BrainGate2 partic
 
 - **Species:** human (*Homo sapiens*).
 - **T5** (`braingate2/T5` in `datasets/participants.py`, implant 2016-08-17): right-handed man, 69 years old at the time of the study, with a C4 AIS-C spinal cord injury eleven years earlier (Fan et al. 2023, section 4). He can speak and move his head.
-- **Implant:** two 96-channel Utah arrays (Blackrock) in the hand knob of the left precentral gyrus. Neither deposit carries electrode or device records, so `array_1` (channels 0-95) and `array_2` (96-191) are neutral names. No source states which array is lateral, or that channel `i` here is the same electrode as channel `i` in `willet_2021`, `deo_2024`, `wilson_2025`, `willsey_2025` or `gusman_2025`, so channel order is treated as dataset-specific.
+- **Implant:** two 96-channel Utah arrays (Blackrock) in the hand knob of the left precentral gyrus. Channels 0-95 are `lateral_array` and 96-191 `medial_array`. Neither deposit carries electrode or device records or states the split. The names follow `willet_2021`, whose readme does, and the data match its column order and that of the other T5 datasets at the candidate level (see [the T5 channel mapping](../../../../docs/channel_mapping/t5.md)).
 - **Recording days:** 26, post-implant days 2100-2609 (2022-05-18 to 2023-10-09).
 
 ## Behavioral Task

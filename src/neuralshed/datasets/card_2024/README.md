@@ -2,7 +2,7 @@
 
 Intracortical brain-to-text speech neuroprosthesis in one BrainGate2 participant (**T15**, a 45-year-old left-handed man with ALS, tetraparesis and severe dysarthria). Four 64-channel Utah arrays (256 electrodes) in the left precentral gyrus record 20 ms-binned threshold crossings and spike-band power while he attempts to speak cued sentences (the "copy task"). The aim is to decode attempted speech into phonemes and text. This is the source dataset for the **Brain-to-Text '25** challenge.
 
-**Working dataset = the `t15_copyTask` neural data** (45 sessions, 10,948 trials, 20 ms-binned neural features plus phoneme and sentence labels). Same participant **T15** and the same four arrays as [`wairagkar_2025`](../wairagkar_2025/README.md) (brain-to-voice) and the T15 part of [`kunz_2025`](../kunz_2025/README.md), and 4,925 trials are also in `wairagkar_2025` and 200 in `kunz_2025` (see [Trials shared with other datasets](#trials-shared-with-other-datasets)).
+**Working dataset = the `t15_copyTask` neural data** (45 sessions, 10,948 trials, 20 ms-binned neural features plus phoneme and sentence labels). Same participant **T15** and the same four arrays as [`wairagkar_2025`](../wairagkar_2025/README.md) (brain-to-voice) and the T15 part of [`kunz_2025`](../kunz_2025/README.md), and most trials on the 25 dates shared with `wairagkar_2025` are also in that release, as are 200 in `kunz_2025` (see [Trials shared with other datasets](#trials-shared-with-other-datasets)).
 
 ## References
 
@@ -14,7 +14,7 @@ Intracortical brain-to-text speech neuroprosthesis in one BrainGate2 participant
 
 - Human. Single BrainGate2 clinical-trial participant **T15**, registered as `braingate2/T15` in `datasets/participants.py`: 45-year-old left-handed man with amyotrophic lateral sclerosis (ALS), tetraparesis (no functional use of the limbs at enrollment) and severe dysarthria (unintelligible to non-expert listeners). Data are de-identified.
 - **Implant:** four 64-electrode Utah arrays (**256 electrodes total**) placed in the **left precentral gyrus** on `2023-07-17` (implant date in the participant registry, data collection starts 25 days later). Two percutaneous pedestals, each wired to two arrays. Array centers in MNI space are in `metadata.py` (appendix S1.12).
-- **Channel order.** The 256-wide channel axis is ordered by array: `ventral 6v, area 4, 55b, dorsal 6v` (64 each). "area 4" is primary motor cortex. Block `i` of 64 channels is the same array in `card_2024`, `wairagkar_2025` and `kunz_2025`, but no source states an electrode-level mapping, and the streams are binned differently (50 Hz here, 100 Hz in `wairagkar_2025`).
+- **Channel order.** The 256-wide channel axis is ordered by array: `ventral 6v, area 4, 55b, dorsal 6v` (64 each). "area 4" is primary motor cortex. Block `i` of 64 channels is the same array in `card_2024`, `wairagkar_2025` and `kunz_2025`, but no source states an electrode-level mapping, and the streams are binned differently (50 Hz here, 100 Hz in `wairagkar_2025`). Trials released in both datasets confirm that column `i` is the same electrode on the days they share, see [T15 channel correspondence](../../../../docs/channel_mapping/t15.md).
 
 ## Behavioral Task
 
@@ -35,7 +35,7 @@ Not in the release: the per-session "diagnostic block" of 8 single-word cues use
 
 - **Neural features** (appendix S1.04, S2.01). 30 kHz signal band-passed 250-5000 Hz, linear regression referencing per 64-electrode array, threshold crossings at -4.5 x RMS and spike-band power clipped at 12,500 µV² at the 1 ms stage, then binned to 20 ms (counts summed, power averaged). Thresholds and referencing weights are refit after every block. Values are **z-scored within session** with statistics from the speech epochs of the preceding 20 trials, then clipped at +10 SD (the max is exactly 10.0 in every session). The 40 ms Gaussian smoothing in the paper is applied at training time in the authors' code, so the released features are unsmoothed.
 - **Labels.** `seq_class_ids`: `0` = blank/pad, `1-39` = 39 ARPAbet phonemes, `40` = word boundary `|` (see `PHONEME_LABELS` in `utils.py`, verified against the repo). `transcription` is the cue as 0-padded ASCII. **`test`-split trials carry only `input_features`** (labels reserved for the Brain-to-Text '25 challenge).
-- **No within-trial timing.** Each trial is a pre-cropped clip that starts about 1 s before the go cue (see [Trials shared with other datasets](#trials-shared-with-other-datasets)). The release has no cue, delay, go or inter-trial timestamps and no per-phoneme or per-word alignment.
+- **No within-trial timing.** Each trial is a pre-cropped clip that starts about 1 s before the go cue, or at the go cue on the first trial of a block (see [Trials shared with other datasets](#trials-shared-with-other-datasets)). The release has no cue, delay, go or inter-trial timestamps and no per-phoneme or per-word alignment.
 
 ## Source Data Format & Layout
 
@@ -43,7 +43,7 @@ Per-session HDF5 (`h5py`).
 
 ```
 <NEURALSHED_DATA_ROOT>/card_2024/
-├── data/Card2024Brain2Text/                  # <- the Study path (utils.DATA_DIR)
+├── data/Card2024Brain2Text/                  # <- the Study path (utils.default_data_dir())
 │   ├── README.md                             deposit README
 │   ├── t15_copyTask.pkl                      online-decoding metrics (Fig. 2), not used here
 │   └── hdf5_data_final/                      # <- utils.sessions_dir() (the zip's wrapper dir)
@@ -81,6 +81,7 @@ Per-session HDF5 (`h5py`).
 | `block` | source `block_num` |
 | `trial_id` | source `trial_num`, unique within `(session, block)` |
 | `task_condition` | `attempted` |
+| `loop_type` | `closed` on post-implant days 69-377 (Wairagkar et al. 2025, Methods), unset on days 25-48 and 543-636 |
 
 Per timeline:
 
@@ -96,16 +97,16 @@ The phoneme target rides the `Sentence` because the source ships no per-phoneme 
 
 ### Trials shared with other datasets
 
-**`wairagkar_2025`.** [`wairagkar_2025`](../wairagkar_2025/README.md) releases many of the same T15 trials, binned at 10 ms, log-transformed, normalized over a rolling 10 s window and smoothed. The two releases share 25 session dates (2023-08-11 to 2023-12-29, post-implant days 25-165). On those days 4,925 trials of this dataset are the same recording as a `wairagkar_2025` trial: 4,100 `train`, 757 `val` and 68 `test`. Each pair has the same cue, and its threshold crossings, with the `wairagkar_2025` clip rebinned to 20 ms, correlate at 0.81-0.90 over time and channels, against at most 0.2 for every other trial of the day. The `wairagkar_2025` clip starts 0.96-0.98 s after the clip here and ends 0.05-0.15 s before it (5th-95th percentile). On the shared days, 1,650 trials here and 873 there have no counterpart, and the other 20 sessions here and 12 there are not shared.
+**`wairagkar_2025`.** [`wairagkar_2025`](../wairagkar_2025/README.md) releases many of the same T15 trials, binned at 10 ms, log-transformed, normalized over a rolling 10 s window and smoothed. The two releases share 25 session dates (2023-08-11 to 2023-12-29, post-implant days 25-165). On those days most of the 6,575 trials of this dataset (about 85%) are the same recording as a `wairagkar_2025` trial, across `train`, `val` and `test`. The pairs were found from the neural data alone. At the pair's offset, the median correlation of each column with the same column of the `wairagkar_2025` clip (rebinned to 20 ms) is about 0.5-0.6 for threshold crossings and about 0.5-0.65 for spike-band power, against about 0.1 and 0.2 at most for any other trial of the day. Every pair whose sentence both releases show has the same cue. About 1,000 trials here and about 200 there have no counterpart, and the other 20 sessions here and 12 there are not shared.
 
-- 68 `test` trials, whose sentence this release withholds, carry their cue in `wairagkar_2025`.
-- The 95 trials of the first `wairagkar_2025` evaluation session (day 110, `Evaluation trial (preliminary)`) are `train` (80) and `val` (15) trials here.
+- Several hundred `test` trials, whose sentence this release withholds, carry their cue in `wairagkar_2025`.
+- All trials of the first `wairagkar_2025` evaluation session (day 110, `Evaluation trial (preliminary)`) are trials here, mostly `train` with some `val` and `test`.
 
-**`kunz_2025`.** The 200 trials of the [`kunz_2025`](../kunz_2025/README.md) file `t15.2024.03.03_attempted_50words` are 200 of the 219 `train` trials of session `t15.2024.03.03` here. Each pair has the same cue, and its threshold crossings correlate at 0.97 or more with the `kunz_2025` recording rebinned to 20 ms, against at most 0.12 for other trials. The imagined-speech blocks of that day are not in this release.
+**`kunz_2025`.** The 200 trials of the [`kunz_2025`](../kunz_2025/README.md) file `t15.2024.03.03_attempted_50words` are 200 of the 219 `train` trials of session `t15.2024.03.03` here. Each pair has the same cue, and every column correlates at 1.00 with the same column of the `kunz_2025` recording rebinned to 20 ms. The imagined-speech files of 2024-03-03 and the `kunz_2025` file of 2024-06-14 share no trial with this release.
 
-**Clip start.** `kunz_2025` releases the go epochs, and each of the 200 clips above starts 0.98-1.02 s before the go cue (5th-95th percentile), which agrees with the `wairagkar_2025` go-period clips starting about 0.97 s after the clips here. A clip here therefore holds about 1 s of the delay period before the attempt.
+**Clip start.** A clip here starts about 1 s before the go cue, so it holds the end of the delay period before the attempt. `wairagkar_2025` clips start at the go cue, and 196 of the 200 clips above start 0.99-1.01 s before the `kunz_2025` go cue. The first trial of each block is the exception: its clip starts at the go cue (the other 4 of the 200), the same moment as its `wairagkar_2025` copy. The `wairagkar_2025` clips of block 7 of `t15.2023.08.18` start about 1.2 s after the clips here.
 
-A collection that pools these datasets holds the shared trials twice. Keep one copy of each pair, or assign both copies to the same split.
+A collection that pools these datasets holds the shared trials twice. Keep one copy of each pair, or assign both copies to the same split. [t15_repeated_trials.md](../../../../docs/channel_mapping/t15_repeated_trials.md) describes how to find the pairs.
 
 ## Notes / Scope
 
@@ -115,7 +116,7 @@ A collection that pools these datasets holds the shared trials twice. Keep one c
 - **Features arrive already normalized.** `input_features` are z-scored within session, so they are not on the raw count or µV² scale that most sibling datasets use, and the rolling 20-trial window crosses any train/val boundary and cannot be undone. Anything pooling this dataset with others has to account for that.
 - **Test-split labels are held out.** Test trials carry only `input_features`, reserved for the Brain-to-Text '25 challenge. They remain usable as label-free input.
 
-## Files in this folder
+## Files
 
 - `__init__.py`: package marker.
 - `metadata.py`: catalog `DATASET_METADATA` (participant, arrays with MNI coordinates, brain-area ontology ids, events) + `sessions()` + `get_metadata()`.

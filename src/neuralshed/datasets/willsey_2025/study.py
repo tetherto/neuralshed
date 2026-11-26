@@ -1,8 +1,8 @@
 """neuralset Study for Willsey et al. 2025 finger decoding.
 
-One timeline is one task block, because the block is the smallest unit with invariant
-task entities: whether the task cues two or four degrees of freedom, and which online
-decoder drove the hand, change from block to block within a day.
+One timeline is one task block, because each block is a separate file on its own
+stretch of the shared clock, 39 s to 78 min from the next, and a timeline is the
+largest span on one continuous clock.
 
 Two block kinds share the Study. Closed-loop blocks emit the decoder's own finger
 posture alongside the cued target, open-loop blocks emit the cued posture only, since
@@ -11,8 +11,13 @@ timeline at all: it holds a saved flight path with no neural data and no clock.
 
 Every stream starts at :func:`utils.steady_state_start` rather than at bin 0. The first
 76 to 88 bins of a block are 20 ms wide instead of 50 ms, so treating them as part of a
-uniform 20 Hz signal would misplace roughly 1.6 s of data. No trial starts before bin
-192, so nothing is lost.
+uniform 20 Hz signal would misplace roughly 1.6 s of data. The earliest trial starts at
+bin 121 (open loop) or 192 (closed loop), after the narrow bins end (bin 89 at the
+latest), so nothing is lost.
+
+The finger streams cover only :func:`utils.task_span`, the bins the task stream reaches.
+The neural recording starts seconds before the task stream and can run on after it, and
+finger values there would be made up.
 """
 
 import typing as tp
@@ -22,6 +27,7 @@ import pandas as pd
 
 from neuralset.events import study
 
+from neuralshed.datasets import participants
 from neuralshed.datasets.study import NeuralshedStudy
 from neuralshed.events import (  # noqa: F401, registers custom types
     BandPower,
@@ -37,6 +43,7 @@ _TASKS = {
     utils.KIND_CLOSED_LOOP: "fingertargets",
     utils.KIND_OPEN_LOOP: "cuedmovement",
 }
+_LOOP_TYPES = {utils.KIND_CLOSED_LOOP: "closed", utils.KIND_OPEN_LOOP: "open"}
 
 
 class Willsey2025FingerDecoding(NeuralshedStudy):
@@ -46,7 +53,6 @@ class Willsey2025FingerDecoding(NeuralshedStudy):
     aliases: tp.ClassVar[tuple[str, ...]] = (
         "willsey_2025",
         "finger-decoding",
-        "quadcopter",
     )
     bibtex: tp.ClassVar[str] = """
 @article{willsey2025finger,
@@ -73,7 +79,7 @@ class Willsey2025FingerDecoding(NeuralshedStudy):
     requirements: tp.ClassVar[tuple[str, ...]] = ("scipy",)
 
     # Three timelines covering every emission path: an open-loop block (no GraspSeries,
-    # nine cued conditions), a closed-loop block whose task cued two degrees of freedom
+    # nine cued postures), a closed-loop block whose task cued two degrees of freedom
     # while a four-dimensional decoder ran, and a fully labelled four-dimensional block.
     # NB: `neuralfetch.utils.update_source_info` computes the counts from this `query`
     # but omits `query` and `frequency` when it rewrites the block, so re-add both by
@@ -81,8 +87,11 @@ class Willsey2025FingerDecoding(NeuralshedStudy):
     _info: tp.ClassVar[study.StudyInfo] = study.StudyInfo(
         num_timelines=60,
         num_subjects=1,
-        query="timeline_index in [25, 30, 53]",
-        num_events_in_query=404,
+        query=(
+            "(session == 't5.2023.04.06' and block in [5, 31])"
+            " or (session == 't5.2023.04.13' and block == 44)"
+        ),
+        num_events_in_query=306,
         event_types_in_query={
             "Action",
             "BandPower",
@@ -93,7 +102,7 @@ class Willsey2025FingerDecoding(NeuralshedStudy):
         frequency=20.0,
     )
 
-    def _download(self) -> None:
+    def _download(self, overwrite: bool = False) -> None:
         """Download the Dryad release into this Study's folder.
 
         Dryad requires ``NEURALFETCH_DRYAD_TOKEN``. The deposit is a single 181 MB zip.
@@ -105,7 +114,7 @@ class Willsey2025FingerDecoding(NeuralshedStudy):
             dset_dir=self.path.parent,
             folder=self.path.name,
             doi="10.5061/dryad.1jwstqk4f",
-        ).download()
+        ).download(overwrite=overwrite)
 
     @property
     def _raw_dir(self):
@@ -114,21 +123,13 @@ class Willsey2025FingerDecoding(NeuralshedStudy):
         return self.path / "Data"
 
     def _ref(self, timeline: dict[str, tp.Any]) -> utils.BlockRef:
-        return utils.BlockRef(
-            session=timeline["session"],
-            block=timeline["block"],
-            kind=timeline["block_kind"],
-            start_time=timeline["start_time"],
-            path=self._raw_dir / timeline["relative_path"],
-        )
+        return utils.block_ref(self._raw_dir / timeline["path"])
 
     def iter_timelines(self) -> tp.Iterator[dict[str, tp.Any]]:
-        implant = _implant_date()
         for ref in utils.list_blocks(self._raw_dir):
             if ref.kind == utils.KIND_QUADCOPTER:
                 continue  # a saved flight path, not a recording
             date = utils.session_date(ref.session)
-            labels = utils.BLOCK_LABELS.get(ref.label, {})
             cued = utils.target_dof(ref) if ref.kind == utils.KIND_CLOSED_LOOP else ()
             yield {
                 "subject": _SUBJECT,
@@ -136,22 +137,19 @@ class Willsey2025FingerDecoding(NeuralshedStudy):
                 "run": ref.run,
                 "task": _TASKS[ref.kind],
                 "block": ref.block,
-                "block_kind": ref.kind,
-                "start_time": ref.start_time,
-                "relative_path": str(ref.path.relative_to(self._raw_dir)),
-                # The framework broadcasts every timeline key to that block's rows as a
-                # string, so these three are emitted as strings with "" for "not
-                # applicable" rather than as ints that would arrive as "None".
-                #
+                "loop_type": _LOOP_TYPES[ref.kind],
+                "path": str(ref.path.relative_to(self._raw_dir)),
                 # How many degrees of freedom the task cued, read off the target stream.
-                # Empty on the open-loop blocks, which cue one posture at a time.
-                "task_dof": str(len(cued)) if cued else "",
-                # How many the online decoder emitted. Not recoverable from the files:
-                # see utils.BLOCK_LABELS. Empty on the blocks the authors did not label.
-                "decoder_dof": str(labels.get("decoder_dof", "")),
-                "new_targets": str(labels.get("new_targets", "")),
+                # None on the open-loop blocks, which cue one posture at a time.
+                "task_dof": len(cued) if cued else None,
+                # How many the online decoder emitted, and how many fingers each outward
+                # trial moved. None on the open-loop blocks.
+                "decoder_dof": utils.decoder_dof(ref) if cued else None,
+                "new_targets": utils.new_targets(ref) if cued else None,
                 "date": date.isoformat(),
-                "post_implant_day": (date - implant).days,
+                "post_implant_day": participants.post_implant_day(
+                    "braingate2/T5", date.isoformat()
+                ),
             }
 
     def _load_neural(self, timeline: dict[str, tp.Any]) -> np.ndarray:
@@ -163,7 +161,8 @@ class Willsey2025FingerDecoding(NeuralshedStudy):
     def _load_grasp(self, timeline: dict[str, tp.Any], key: str) -> np.ndarray:
         """SpecialLoader target: a finger stream as dims-first ``(4, n_bins)``."""
         ref = self._ref(timeline)
-        series = utils.on_bins(ref, key)[utils.steady_state_start(ref) :]
+        first, stop = utils.task_span(ref)
+        series = utils.on_bins(ref, key)[first:stop]
         return np.ascontiguousarray(
             series[:, list(utils.DECODED_COLUMNS)].T, dtype=np.float32
         )
@@ -173,8 +172,12 @@ class Willsey2025FingerDecoding(NeuralshedStudy):
         timeline: dict[str, tp.Any],
         ref: utils.BlockRef,
         n_bins: int,
+        offset: int,
     ) -> list[dict[str, tp.Any]]:
         duration = n_bins / _RATE_HZ
+        first, stop = utils.task_span(ref)
+        finger_start = (first - offset) / _RATE_HZ
+        finger_duration = (stop - first) / _RATE_HZ
         rows = [
             {
                 "type": "BandPower",
@@ -183,17 +186,22 @@ class Willsey2025FingerDecoding(NeuralshedStudy):
                 "duration": duration,
                 "frequency": _RATE_HZ,
                 "n_features": utils.N_CHANNELS,
-                # The Supplementary Methods give the whole chain: a 250 Hz digital
-                # high-pass, common average referencing, then the sum of the squared
-                # magnitude per 50 ms window. So the quantity is a squared voltage,
-                # summed rather than averaged, which makes it extensive. The 20 ms
-                # prefix of every block confirms it independently by sitting at 20/50
-                # of the steady level.
+                # The Supplementary Methods give the whole chain for these seven
+                # days: the amplifier's 0.3 Hz-7.5 kHz analog filter at 30 kHz, common
+                # average referencing, the 250 Hz digital high-pass, then the sum of
+                # the squared magnitude per 50 ms window. The analog low-pass is the
+                # band's top edge. The 50 ms values sit on the scale of a mean, so the
+                # sum was divided by a fixed count, which the 20 ms prefix of every
+                # block confirms by sitting at 20/50 of the steady level.
+                "lower_freq": 250.0,
+                "upper_freq": 7500.0,
                 "unit": "uV^2",
                 "normalization": "raw",
                 "processing": (
-                    "250 Hz digital high-pass; common average referencing; "
-                    "sum of squared magnitude per 50 ms bin"
+                    "0.3 Hz-7.5 kHz analog filter, 30 kHz sampling, 250 nV resolution; "
+                    "common average referencing; 250 Hz digital high-pass; "
+                    "sum of squared magnitude per 50 ms bin over a fixed count "
+                    "(mean scale)"
                 ),
                 "filepath": study.SpecialLoader(
                     method=self._load_neural, timeline=timeline
@@ -202,8 +210,8 @@ class Willsey2025FingerDecoding(NeuralshedStudy):
             {
                 "type": "TargetGraspSeries",
                 "feature": "finger_target",
-                "start": 0.0,
-                "duration": duration,
+                "start": finger_start,
+                "duration": finger_duration,
                 "frequency": _RATE_HZ,
                 "dims": utils.DECODED_DIMS,
                 "n_features": len(utils.DECODED_DIMS),
@@ -220,8 +228,8 @@ class Willsey2025FingerDecoding(NeuralshedStudy):
                 {
                     "type": "GraspSeries",
                     "feature": "finger_position",
-                    "start": 0.0,
-                    "duration": duration,
+                    "start": finger_start,
+                    "duration": finger_duration,
                     "frequency": _RATE_HZ,
                     "dims": utils.DECODED_DIMS,
                     "n_features": len(utils.DECODED_DIMS),
@@ -255,17 +263,21 @@ class Willsey2025FingerDecoding(NeuralshedStudy):
         postures = {
             name: np.array(row) for row, name in utils.OPEN_LOOP_CONDITIONS.items()
         }
+        neutral = postures["rest"]
+        postures.update({name: neutral for name in utils.OPEN_LOOP_RETURNS.values()})
         return [
             (start - offset, stop - offset, condition, postures[condition])
             for start, stop, condition in utils.cue_windows(ref)
         ]
 
     def _trial_rows(self, ref: utils.BlockRef, offset: int) -> list[dict[str, tp.Any]]:
+        closed_loop = ref.kind == utils.KIND_CLOSED_LOOP
         trials = (
             self._closed_loop_trials(ref, offset)
-            if ref.kind == utils.KIND_CLOSED_LOOP
+            if closed_loop
             else self._open_loop_trials(ref, offset)
         )
+        success = utils.trial_success(ref) if closed_loop else None
         rows: list[dict[str, tp.Any]] = []
         for index, (start, stop, condition, target) in enumerate(trials):
             if start < 0:
@@ -278,44 +290,49 @@ class Willsey2025FingerDecoding(NeuralshedStudy):
                 "code": utils.condition_code(condition),
                 "condition": condition,
                 "trial_id": index,
+                "period": "go",
                 **{
                     f"target_{dim}": float(value)
                     for dim, value in zip(utils.DECODED_DIMS, target)
                 },
             }
-            rows.append(
-                {
-                    "type": "Stimulus",
-                    "modality": "visual",
-                    "description": "cued finger posture",
-                    "stimulus_kind": "target_cue",
-                    **common,
+            # A closed-loop target appears when its trial starts, with no instructed
+            # delay, so the Action already carries its onset and position.
+            if not closed_loop:
+                rows.append(
+                    {
+                        "type": "Stimulus",
+                        "modality": "visual",
+                        "description": "cued finger posture",
+                        "stimulus_kind": "target_cue",
+                        "task_condition": "na",
+                        **common,
+                    }
+                )
+            if condition == "rest":
+                action = {
+                    "description": "rest at the neutral posture",
+                    "task_condition": "na",
+                    "action_kind": "rest",
                 }
-            )
-            rows.append(
-                {
-                    "type": "Action",
+            else:
+                action = {
                     "description": "attempted finger movement toward the cued posture",
                     "task_condition": "attempted",
                     "action_kind": "finger_control",
-                    **common,
                 }
-            )
+            if closed_loop:
+                action["success"] = bool(success[index])
+            rows.append({"type": "Action", **action, **common})
         return rows
 
     def _load_timeline_events(self, timeline: dict[str, tp.Any]) -> pd.DataFrame:
         ref = self._ref(timeline)
         offset = utils.steady_state_start(ref)
         n_bins = utils.get_neural(ref).shape[0] - offset
-        rows = self._continuous_rows(timeline, ref, n_bins)
+        rows = self._continuous_rows(timeline, ref, n_bins, offset)
         rows.extend(self._trial_rows(ref, offset))
         return pd.DataFrame(rows)
-
-
-def _implant_date():
-    from neuralshed.datasets import participants
-
-    return participants.implant_date("braingate2/T5")
 
 
 __all__ = ["Willsey2025FingerDecoding"]

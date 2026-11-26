@@ -2,6 +2,7 @@ import contextlib
 import os
 import re
 import typing as tp
+from pathlib import Path
 
 # DANDI Archive REST root
 DANDI_API = "https://api.dandiarchive.org/api"
@@ -166,17 +167,47 @@ def dandi_asset_url(
     return f"{DANDI_API}/dandisets/{dandiset}/versions/{version}/assets/{aid}/download/"
 
 
-def resolve_source(ref: str, dandiset: str, version: str = "draft") -> str:
+def dandi_nwb_paths(
+    dandiset: str,
+    version: str = "draft",
+    root: Path | None = None,
+) -> list[str]:
+    """A dandiset's NWB files as sorted ``<dandiset>/<asset path>`` strings.
+
+    The files under ``root/<dandiset>`` when there are any (macOS ``._`` sidecars left
+    out), else the dandiset's assets listed on DANDI, for streaming.
+    """
+    if root is not None:
+        local = Path(root, dandiset).rglob("*.nwb")
+        rels = [str(p.relative_to(root)) for p in local if not p.name.startswith("._")]
+        if rels:
+            return sorted(rels)
+    assets = dandi_list_assets(dandiset, version)
+    return sorted(
+        f"{dandiset}/{a['path']}" for a in assets if a["path"].endswith(".nwb")
+    )
+
+
+def resolve_source(
+    ref: str,
+    dandiset: str,
+    version: str = "draft",
+    root: Path | None = None,
+) -> str:
     """Resolve a reference to a source string for the openers (local-or-remote).
 
-    A local file path or an ``http(s)://`` URL passes through unchanged; anything
-    else is treated as a DANDI asset path or UUID in ``dandiset`` and resolved to
-    its streaming URL via :func:`dandi_asset_url`. Feed the result to
-    :func:`open_nwb` / :func:`open_h5` / :func:`load_nwb` / :func:`load_h5`.
+    With ``root``, a ``<dandiset>/<asset path>`` ref (as listed by
+    :func:`dandi_nwb_paths`) resolves to ``root/ref`` when that file exists. A local file
+    path or an ``http(s)://`` URL passes through unchanged. Anything else is a DANDI asset
+    path or UUID in ``dandiset``, resolved to its streaming URL via
+    :func:`dandi_asset_url`. Feed the result to :func:`open_nwb` / :func:`open_h5` /
+    :func:`load_nwb` / :func:`load_h5`.
     """
+    if root is not None and Path(root, ref).is_file():
+        return str(Path(root, ref))
     if os.path.isfile(ref) or _is_remote(ref):
         return ref
-    return dandi_asset_url(dandiset, ref, version)
+    return dandi_asset_url(dandiset, ref.removeprefix(f"{dandiset}/"), version)
 
 
 @contextlib.contextmanager

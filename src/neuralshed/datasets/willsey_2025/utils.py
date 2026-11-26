@@ -9,14 +9,15 @@ holding two redis streams recorded side by side:
 * ``binnedNeural_*`` -- spike-band power in 50 ms bins, one row per bin;
 * ``(binned_)taskOutput_stream_*`` -- the game state at roughly 1 kHz.
 
-The power is **accumulated over the bin rather than averaged**, so it is extensive and
-scales with the bin width. The 20 ms prefix described at :data:`N_STARTUP_BINS` is the
-direct evidence, and the consequence is that rebinning has to sum, not average.
+The Supplementary Methods describe the power as a sum of squared samples over the bin,
+but the 50 ms bins sit on the scale of datasets that average (see the README), so the
+sum was divided by a fixed count and the stream behaves as a mean square: rebinning
+averages. The 20 ms prefix described at :data:`N_STARTUP_BINS` shows the count is fixed.
 
 Both carry a ``redisClock`` in unix milliseconds, which is the only common time
-base and the one the authors align on (``t5_parse.m`` matches each trial edge to
-its nearest neural bin). ``binnedNeural_xpcClock`` is a block-relative ms counter
-present in the closed-loop files only.
+base and the one the authors align on (``t5_parse.m`` matches each open-loop trial
+edge to its nearest neural bin). ``binnedNeural_xpcClock`` is the real-time machine's ms
+counter, not zeroed at block start, present in the closed-loop files only.
 
 The paper is Willsey et al. 2025, *Nature Medicine* 31(1):96-104; the reference
 code is https://github.com/WillseyBCILab/BCI_Finger_Decoding_Quadcopter.
@@ -34,20 +35,24 @@ import scipy.io as sio
 from neuralshed.datasets.utils import dataset_dir
 
 N_CHANNELS = 192
-N_ARRAYS = 2
 #: Every file stores 256 electrode columns; columns 192-255 are exactly zero in all
 #: 60 neural blocks (the recording system's unpopulated front-end channels), so the
 #: readers below trim them off.
 N_CHANNELS_STORED = 256
 
-NEURAL_BIN_SIZE_MS = 50
+#: On this day columns 0-95 and 96-191 are exchanged relative to every other session, as
+#: on wilson_2025's swapped-cable day. No source states it. The data show it in all 20
+#: blocks (``docs/channel_mapping/t5.md``), and :func:`_load` swaps them back.
+SWAPPED_ARRAY_SESSIONS = frozenset({"t5.2023.04.13"})
+
 FS = 20.0
 
 #: The first ~81 bins of every block (76 to 88, always contiguous from bin 0) are spaced
-#: 20 ms rather than 50 ms. They are not transients: the power is **accumulated over the
-#: bin**, so a 20 ms bin carries 40% of a 50 ms one. Measured across all 60 blocks the
-#: raw prefix sits at 0.386 of the block mean, and rescaling it by 50/20 recovers the
-#: following bins (per-channel correlation 0.97, level ratio 0.956). The authors drop 80
+#: 20 ms rather than 50 ms. They are not transients: every bin is divided by the same
+#: count, sized for 50 ms (see the module docstring), so a 20 ms bin carries 40% of a
+#: 50 ms one. Measured across all 60 blocks the raw prefix sits at 0.386 of the block
+#: mean, and rescaling it by 50/20 recovers the following bins (per-channel correlation
+#: 0.97, level ratio 0.956). The authors drop 80
 #: of them before z-scoring (``ManuscriptFigsFinal.ipynb``, "First 80 samples are
 #: noisy"), which is the right call because the narrower bins bias the per-channel mean
 #: and standard deviation, not because the samples are bad.
@@ -63,11 +68,17 @@ STORED_DIMS = ("thumb_flexion", "thumb_abduction", "index", "middle", "ring", "l
 DECODED_DIMS = ("thumb_flexion", "thumb_abduction", "index_middle", "ring_little")
 DECODED_COLUMNS = (0, 1, 2, 5)
 
-#: Finger position is a fraction of the range of motion: 0 is full flexion, 1 is full
-#: extension, 0.5 is the neutral posture the target stream rests at.
-POSITION_FLEXED = 0.0
+#: The three fingers a closed-loop target moves, as indices into DECODED_DIMS. The
+#: thumb's two degrees of freedom count as one finger, as in the authors' one- and
+#: two-finger blocks.
+FINGERS = {"thumb": (0, 1), "index_middle": (2,), "ring_little": (3,)}
+
+#: Finger position is a fraction of the range of motion: 1 is full flexion (full
+#: abduction for ``thumb_abduction``), 0 is full extension (adduction), 0.5 is the
+#: neutral posture the target stream rests at. The paper's Methods give flexion and
+#: abduction the positive sign and the authors' notebook takes it from the target
+#: change, but ``RunAnalysis.m`` and the Extended Data Fig. 1 it draws name 0 flexion.
 POSITION_NEUTRAL = 0.5
-POSITION_EXTENDED = 1.0
 
 #: Task parameters, stored per block as strings and identical across all 58
 #: closed-loop blocks. The target spans ``+/- fn_hold_threshold`` around its centre,
@@ -75,33 +86,50 @@ POSITION_EXTENDED = 1.0
 HOLD_TIME_S = 0.5
 TARGET_HALF_WIDTH = 0.1
 
-#: Hand-colour codes in the closed-loop task stream. 1 is a ~10 ms flash at the moment
-#: the held target is acquired and 2 is every other sample, so a trial runs from the
-#: end of one flash to the start of the next (this is what ``t5_parse.m`` extracts).
+#: Hand-colour codes in the closed-loop task stream. 1 is a ~10 ms flash that closes a
+#: trial, when the held target is acquired or at the 10 s timeout (:func:`trial_success`
+#: tells the two apart), and 2 is every other sample, so a trial runs from the end of
+#: one flash to the start of the next. The authors' notebook delimits the same trials by
+#: target changes (``TranLog`` in ``CalculateTrialStats``).
 COLOR_ACQUIRED = 1
 COLOR_MOVING = 2
 
 #: The nine cued conditions of the open-loop blocks: rest plus each decoded degree of
-#: freedom driven to full flexion or full extension. Keyed by the target row.
+#: freedom driven to either end of its range. Keyed by the target row.
 OPEN_LOOP_CONDITIONS = {
     (0.5, 0.5, 0.5, 0.5): "rest",
-    (0.0, 0.5, 0.5, 0.5): "thumb_flexion-flex",
-    (1.0, 0.5, 0.5, 0.5): "thumb_flexion-extend",
-    (0.5, 0.0, 0.5, 0.5): "thumb_abduction-flex",
-    (0.5, 1.0, 0.5, 0.5): "thumb_abduction-extend",
-    (0.5, 0.5, 0.0, 0.5): "index_middle-flex",
-    (0.5, 0.5, 1.0, 0.5): "index_middle-extend",
-    (0.5, 0.5, 0.5, 0.0): "ring_little-flex",
-    (0.5, 0.5, 0.5, 1.0): "ring_little-extend",
+    (0.0, 0.5, 0.5, 0.5): "thumb_flexion-extend",
+    (1.0, 0.5, 0.5, 0.5): "thumb_flexion-flex",
+    (0.5, 0.0, 0.5, 0.5): "thumb_abduction-adduct",
+    (0.5, 1.0, 0.5, 0.5): "thumb_abduction-abduct",
+    (0.5, 0.5, 0.0, 0.5): "index_middle-extend",
+    (0.5, 0.5, 1.0, 0.5): "index_middle-flex",
+    (0.5, 0.5, 0.5, 0.0): "ring_little-extend",
+    (0.5, 0.5, 0.5, 1.0): "ring_little-flex",
 }
 
 #: The two closed-loop conditions. Targets strictly alternate between a randomly placed
 #: posture and a return to the neutral one, so half the trials are the latter.
 CLOSED_LOOP_CONDITIONS = ("return_to_neutral", "random_target")
 
+#: The open-loop go phases that bring a degree of freedom back to neutral, named after
+#: the outward movement they undo. Keyed by the posture the phase starts from. The
+#: authors' ``RunAnalysis.m`` names a phase by its end posture, which counts these as
+#: rest, but only a phase that starts and ends at neutral is rest.
+OPEN_LOOP_RETURNS = {
+    posture: f"{name}_return"
+    for posture, name in OPEN_LOOP_CONDITIONS.items()
+    if name != "rest"
+}
+
 #: Stable integer codes spanning both block kinds, so a code means the same thing across
-#: the dataset. The open-loop conditions come first, in :data:`OPEN_LOOP_CONDITIONS` order.
-CONDITION_CODES = tuple(OPEN_LOOP_CONDITIONS.values()) + CLOSED_LOOP_CONDITIONS
+#: the dataset. The open-loop conditions come first, in :data:`OPEN_LOOP_CONDITIONS` order,
+#: then the closed-loop ones, then the open-loop returns.
+CONDITION_CODES = (
+    tuple(OPEN_LOOP_CONDITIONS.values())
+    + CLOSED_LOOP_CONDITIONS
+    + tuple(OPEN_LOOP_RETURNS.values())
+)
 
 
 def condition_code(condition: str) -> int:
@@ -124,46 +152,50 @@ TASK_LABELS = {
 #: fields, so it is named here rather than sniffed.
 QUADCOPTER_BLOCK = "t5.2023.07.12_block14"
 
-#: Per-block labels that exist only in the authors' analysis notebook, not in the
-#: released files. ``decoder_dof`` is the number of degrees of freedom the online
-#: decoder emitted, which is not recoverable from the data: a 4-DoF decoder driving a
-#: 2-DoF task looks exactly like a 2-DoF decoder doing the same, because the game pins
-#: the unused dimensions either way (use :func:`target_dof` for the task's own count).
-#: ``new_targets`` is how many fingers were given a new target each trial.
-#: Transcribed from ``ManuscriptFigsFinal.ipynb`` cells 18 and 24; blocks the notebook
-#: does not label are absent.
-BLOCK_LABELS: dict[str, dict] = {
-    "t5.2023.04.06_block30": {"decoder_dof": 4},
-    "t5.2023.04.06_block31": {"decoder_dof": 4},
-    "t5.2023.04.06_block33": {"decoder_dof": 4},
-    "t5.2023.04.06_block34": {"decoder_dof": 4},
-    "t5.2023.04.06_block42": {"decoder_dof": 4},
-    "t5.2023.04.06_block43": {"decoder_dof": 4},
-    "t5.2023.04.06_block44": {"decoder_dof": 2},
-    "t5.2023.04.06_block45": {"decoder_dof": 4},
-    "t5.2023.04.06_block46": {"decoder_dof": 2},
-    "t5.2023.04.13_block19": {"decoder_dof": 4},
-    "t5.2023.04.13_block20": {"decoder_dof": 4},
-    "t5.2023.04.13_block21": {"decoder_dof": 2},
-    "t5.2023.04.13_block22": {"decoder_dof": 4},
-    "t5.2023.04.13_block23": {"decoder_dof": 4},
-    "t5.2023.04.13_block25": {"decoder_dof": 2},
-    "t5.2023.04.13_block26": {"decoder_dof": 4},
-    "t5.2023.04.13_block27": {"decoder_dof": 4},
-    "t5.2023.04.13_block28": {"decoder_dof": 2},
-    "t5.2023.04.13_block43": {"decoder_dof": 4, "new_targets": 2},
-    "t5.2023.04.13_block44": {"decoder_dof": 4, "new_targets": 1},
-    "t5.2023.04.13_block45": {"decoder_dof": 4, "new_targets": 2},
-    "t5.2023.04.13_block46": {"decoder_dof": 4, "new_targets": 1},
-    "t5.2023.04.13_block47": {"decoder_dof": 4, "new_targets": 1},
-    "t5.2023.04.13_block48": {"decoder_dof": 4, "new_targets": 2},
-    "t5.2023.04.13_block50": {"decoder_dof": 4, "new_targets": 1},
-    "t5.2023.04.13_block51": {"decoder_dof": 4, "new_targets": 2},
+#: How many degrees of freedom the online decoder emitted on the 22 blocks of the
+#: two-degree-of-freedom task. The data cannot tell: a 4-DoF decoder driving the 2-DoF
+#: task looks exactly like a 2-DoF decoder doing the same, because the game pins the
+#: unused dimensions either way. Taken from the authors' ``ManuscriptFigsFinal.ipynb``,
+#: by the cell named above each group. The ``Decoders/`` folders confirm the ten blocks
+#: they cover, with one ``myMean`` entry per decoder output. Cell 31 only groups its
+#: blocks with the 2-DoF decoder ones, and for 2023-04-13 block 32 that makes four
+#: 2-DoF decoder blocks that day where the paper's Table 2 lists three.
+DECODER_DOF: dict[str, int] = {
+    # Cell 11, the 2-DoF decoder population ("529 trials (3 days)" in the paper).
+    "t5.2023.03.21_block18": 2,
+    "t5.2023.03.21_block19": 2,
+    "t5.2023.03.23_block07": 2,
+    "t5.2023.03.23_block08": 2,
+    "t5.2023.03.23_block09": 2,
+    "t5.2023.04.06_block15": 2,
+    "t5.2023.04.06_block16": 2,
+    # Cell 18, and the Decoders/ folders from 2023-04-06 block 43 on.
+    "t5.2023.04.06_block31": 4,
+    "t5.2023.04.06_block34": 4,
+    "t5.2023.04.06_block43": 4,
+    "t5.2023.04.06_block44": 2,
+    "t5.2023.04.06_block45": 4,
+    "t5.2023.04.06_block46": 2,
+    "t5.2023.04.13_block20": 4,
+    "t5.2023.04.13_block21": 2,
+    "t5.2023.04.13_block23": 4,
+    "t5.2023.04.13_block25": 2,
+    "t5.2023.04.13_block27": 4,
+    "t5.2023.04.13_block28": 2,
+    # Cell 31.
+    "t5.2023.04.06_block41": 2,
+    "t5.2023.04.06_block48": 2,
+    "t5.2023.04.13_block32": 2,
 }
 
 #: The Study downloads into this class-named folder under ``data/``.
 DATA_SUBDIR = "Willsey2025FingerDecoding"
-DEFAULT_DATA_DIR = dataset_dir("willsey_2025") / "data" / DATA_SUBDIR / "Data"
+
+
+def default_data_dir() -> Path:
+    """This dataset's data folder under ``NEURALSHED_DATA_ROOT``."""
+    return dataset_dir("willsey_2025") / "data" / DATA_SUBDIR / "Data"
+
 
 _NAME_RE = re.compile(
     r"^t5_t5\.(?P<session>\d{4}\.\d{2}\.\d{2})_Data_RedisMat_\d{8}_"
@@ -178,7 +210,9 @@ class BlockRef:
     session: str  # e.g. "t5.2023.03.09"
     block: int  # the source's own block number, from the filename suffix
     kind: str  # "closed_loop" | "open_loop" | "quadcopter"
-    start_time: str  # wall-clock start "HHMMSS", from the filename
+    # Wall-clock "HHMMSS" from the filename. It is when the file was saved, 1 to 2 s
+    # after the last neural bin, so it orders blocks but does not mark their start.
+    saved_time: str
     path: Path
 
     @property
@@ -199,43 +233,44 @@ def session_date(session: str) -> dt.date:
     return dt.date.fromisoformat(session.removeprefix("t5.").replace(".", "-"))
 
 
-def list_blocks(data_dir: str | Path = DEFAULT_DATA_DIR) -> list[BlockRef]:
+def block_ref(path: Path) -> BlockRef:
+    """The block a released ``.mat`` file holds, read from its name and folder."""
+    match = _NAME_RE.match(path.stem)
+    if match is None:
+        raise ValueError(f"unrecognized block filename: {path.name}")
+    session, block = f"t5.{match['session']}", int(match["block"])
+    if f"{session}_block{block:02d}" == QUADCOPTER_BLOCK:
+        kind = KIND_QUADCOPTER
+    elif path.parent.name == "OpenLoopData":
+        kind = KIND_OPEN_LOOP
+    else:
+        kind = KIND_CLOSED_LOOP
+    return BlockRef(
+        session=session, block=block, kind=kind, saved_time=match["time"], path=path
+    )
+
+
+def list_blocks(data_dir: str | Path | None = None) -> list[BlockRef]:
     """Every released block, in recording order."""
-    root = Path(data_dir)
-    refs = []
-    for path in sorted(root.glob("**/*.mat")):
-        if path.name.startswith("._") or path.parent.name == "Decoders":
-            continue
-        match = _NAME_RE.match(path.stem)
-        if match is None:
-            raise ValueError(f"unrecognized block filename: {path.name}")
-        session, block = f"t5.{match['session']}", int(match["block"])
-        if f"{session}_block{block:02d}" == QUADCOPTER_BLOCK:
-            kind = KIND_QUADCOPTER
-        elif path.parent.name == "OpenLoopData":
-            kind = KIND_OPEN_LOOP
-        else:
-            kind = KIND_CLOSED_LOOP
-        refs.append(
-            BlockRef(
-                session=session,
-                block=block,
-                kind=kind,
-                start_time=match["time"],
-                path=path,
-            )
-        )
-    return sorted(refs, key=lambda ref: (ref.session, ref.start_time))
+    data_dir = default_data_dir() if data_dir is None else data_dir
+    refs = [
+        block_ref(path)
+        for path in sorted(Path(data_dir).glob("**/*.mat"))
+        if not path.name.startswith("._") and path.parent.name != "Decoders"
+    ]
+    return sorted(refs, key=lambda ref: (ref.session, ref.saved_time))
 
 
-def list_sessions(data_dir: str | Path = DEFAULT_DATA_DIR) -> list[str]:
+def list_sessions(data_dir: str | Path | None = None) -> list[str]:
     """Recording days, oldest first."""
+    data_dir = default_data_dir() if data_dir is None else data_dir
     return sorted({ref.session for ref in list_blocks(data_dir)})
 
 
 def session_blocks(
-    data_dir: str | Path = DEFAULT_DATA_DIR,
+    data_dir: str | Path | None = None,
 ) -> dict[str, list[BlockRef]]:
+    data_dir = default_data_dir() if data_dir is None else data_dir
     out: dict[str, list[BlockRef]] = {}
     for ref in list_blocks(data_dir):
         out.setdefault(ref.session, []).append(ref)
@@ -264,6 +299,9 @@ def _load(path: str) -> dict:
         raise ValueError(f"{path}: expected {N_CHANNELS_STORED} columns")
     if power[:, N_CHANNELS:].any():
         raise ValueError(f"{path}: electrode columns {N_CHANNELS}-255 are not empty")
+    power = power[:, :N_CHANNELS]
+    if block_ref(Path(path)).session in SWAPPED_ARRAY_SESSIONS:
+        power = power[:, np.r_[96:192, 0:96]]
 
     # Closed-loop blocks store the colour as an RGBA-shaped ``(n, 4)`` array whose first
     # column carries the code and whose others are always zero; the open-loop blocks
@@ -272,7 +310,7 @@ def _load(path: str) -> dict:
     color = color[:, 0] if color.ndim == 2 and color.shape[1] == 4 else color.ravel()
 
     data = {
-        "spike_band_power": power[:, :N_CHANNELS],
+        "spike_band_power": power,
         "neural_clock": np.asarray(raw["binnedNeural_redisClock"])
         .ravel()
         .astype(np.int64),
@@ -292,9 +330,14 @@ def _load(path: str) -> dict:
         data["neural_xpc_clock"] = (
             np.asarray(raw["binnedNeural_xpcClock"]).ravel().astype(np.int64)
         )
-    for name in ("holdTime", "fn_hold_threshold"):
+    for name, expected in (
+        ("holdTime", HOLD_TIME_S),
+        ("fn_hold_threshold", TARGET_HALF_WIDTH),
+    ):
         if name in raw:
             data[name] = float(np.asarray(raw[name]).ravel()[0])
+            if data[name] != expected:
+                raise ValueError(f"{path}: {name} is {data[name]}, expected {expected}")
     return data
 
 
@@ -304,7 +347,8 @@ def load_block(ref: BlockRef) -> dict:
 
 
 def get_neural(ref: BlockRef) -> np.ndarray:
-    """Spike-band power as ``(n_bins, 192)``, in the order the source stores it."""
+    """Spike-band power as ``(n_bins, 192)``, in source order except on
+    :data:`SWAPPED_ARRAY_SESSIONS`, whose arrays are swapped back."""
     return load_block(ref)["spike_band_power"]
 
 
@@ -328,8 +372,8 @@ def steady_state_start(ref: BlockRef) -> int:
     level while its predecessor sits at 0.39, i.e. exactly 20/50.
 
     Anything that treats the stream as a uniform 20 Hz signal has to start here, since
-    the prefix packs 76 to 88 bins into 1.5 to 1.8 s rather than 4 s. No trial starts
-    before bin 192 in any block, so no trial is lost.
+    the prefix packs 76 to 88 bins into 1.5 to 1.8 s rather than 4 s. The earliest trial
+    starts at bin 121 (open loop) or 192 (closed loop), so no trial is lost.
     """
     clock = load_block(ref)["neural_clock"]
     gaps = np.flatnonzero(np.diff(clock) > 35)
@@ -338,20 +382,13 @@ def steady_state_start(ref: BlockRef) -> int:
     return int(gaps[0]) + 1
 
 
-def get_task_stream(ref: BlockRef, key: str) -> np.ndarray:
-    """One raw ~1 kHz task-stream field (``target``, ``position``, ``hand_color``)."""
-    data = load_block(ref)
-    if key not in data:
-        raise KeyError(f"{ref.label}: no such task-stream field {key!r}")
-    return data[key]
-
-
 def on_bins(ref: BlockRef, key: str) -> np.ndarray:
     """A task-stream field resampled onto the neural bin times, as ``(n_bins, n_dims)``.
 
     Linear interpolation over the shared redis clock, matching ``LoadData`` in the
     authors' notebook. Neural bins outside the task stream's span (the recording
-    starts a few seconds early) are clipped to the nearest task sample.
+    starts a few seconds early) are clipped to the nearest task sample, so anything
+    emitted from this keeps to :func:`task_span`.
     """
     data = load_block(ref)
     values = np.asarray(data[key], dtype=np.float64)
@@ -361,6 +398,22 @@ def on_bins(ref: BlockRef, key: str) -> np.ndarray:
     return np.column_stack(
         [np.interp(clock, data["task_clock"], column) for column in values.T]
     )
+
+
+def task_span(ref: BlockRef) -> tuple[int, int]:
+    """Half-open neural-bin range that the task stream covers, from steady state on.
+
+    The neural recording starts several seconds before the task stream (about 7 s in
+    the closed-loop blocks, 2 s in the open-loop ones) and can run up to 29 s past its
+    end. A finger value for a bin outside the task stream would be made up, so the
+    finger streams are emitted over this range only. It starts no earlier than
+    :func:`steady_state_start`.
+    """
+    data = load_block(ref)
+    clock, task_clock = data["neural_clock"], data["task_clock"]
+    first = int(np.searchsorted(clock, task_clock[0], side="left"))
+    stop = int(np.searchsorted(clock, task_clock[-1], side="right"))
+    return max(first, steady_state_start(ref)), stop
 
 
 def get_finger_position(ref: BlockRef) -> np.ndarray:
@@ -382,18 +435,23 @@ def _bin_span(
     bin belonging to an interval is the first one timestamped after the interval opens,
     and the last is the last one timestamped at or before it closes.
 
-    This is a deliberate one-bin divergence from ``t5_parse.m``, which matches each edge
-    to its *nearest* bin. Nearest-matching puts the first bin of a trial on the window
-    that mostly covered the previous target, because the acquisition flash is shorter
-    than one bin: measured on the released blocks, the cued target changes at
-    ``trial start + 1`` in 95 of 101 trials. It also makes consecutive trials share a
-    bin, which an extractor rejects as overlapping coverage. The authors only used
-    nearest-matching to average 2 s open-loop windows, where one bin is immaterial.
+    This is a deliberate one-bin divergence from ``t5_parse.m``, the authors' open-loop
+    parser, which matches each edge to its *nearest* bin. Nearest-matching puts the
+    first bin of a trial on the window that mostly covered the previous target, because
+    the acquisition flash is shorter than one bin: measured on the released blocks, the
+    cued target changes at ``trial start + 1`` in 95 of 101 trials. It also makes
+    consecutive trials share a bin, which an extractor rejects as overlapping coverage.
+    The authors only used nearest-matching to average 2 s open-loop windows, where one
+    bin is immaterial.
     """
     clock = load_block(ref)["neural_clock"]
     first = np.searchsorted(clock, begin, side="right")
     last = np.searchsorted(clock, end, side="right")
-    return [(int(a), int(b)) for a, b in zip(first, last) if b > a]
+    # The callers pair these spans with per-trial targets and conditions by position,
+    # so a span covering no bin cannot be dropped without shifting every later label.
+    if np.any(last <= first):
+        raise ValueError(f"{ref.label}: a trial window covers no neural bin")
+    return [(int(a), int(b)) for a, b in zip(first, last)]
 
 
 def trial_windows(ref: BlockRef) -> list[tuple[int, int]]:
@@ -430,10 +488,36 @@ def _trial_edges(color: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
 
 
 def trial_targets(ref: BlockRef) -> np.ndarray:
-    """The target each trial acquired, as ``(n_trials, 4)`` over DECODED_DIMS."""
+    """The target each trial cued, as ``(n_trials, 4)`` over DECODED_DIMS."""
     data = load_block(ref)
     _, stops = _trial_edges(data["hand_color"])
     return data["target"][np.ix_(stops, list(DECODED_COLUMNS))]
+
+
+def trial_success(ref: BlockRef) -> np.ndarray:
+    """Whether each closed-loop trial acquired its target, as ``(n_trials,)`` bools.
+
+    The flash that closes a trial also fires at the 10 s timeout, and the release does
+    not record the outcome. A trial succeeded when every cued degree of freedom stayed
+    within :data:`TARGET_HALF_WIDTH` of the target for the :data:`HOLD_TIME_S` before
+    the flash, the test of the authors' ``CalculateTrialStats``. It runs on the
+    full-rate task stream, not on neural bins as theirs does, because the neural
+    recording of ``t5.2023.03.09_block18`` stops 155 ms before its last trial's flash.
+    """
+    data = load_block(ref)
+    clock = data["task_clock"]
+    position = data["position"][:, list(DECODED_COLUMNS)]
+    target = data["target"][:, list(DECODED_COLUMNS)]
+    cued = [DECODED_DIMS.index(dim) for dim in target_dof(ref)]
+    _, stops = _trial_edges(data["hand_color"])
+    begins = np.searchsorted(clock, clock[stops] - HOLD_TIME_S * 1000, side="right")
+    ends = np.searchsorted(clock, clock[stops], side="right")
+    return np.array(
+        [
+            np.all(np.abs(position[a:b, cued] - target[stop, cued]) < TARGET_HALF_WIDTH)
+            for a, b, stop in zip(begins, ends, stops)
+        ]
+    )
 
 
 def target_dof(ref: BlockRef) -> tuple[str, ...]:
@@ -448,13 +532,40 @@ def target_dof(ref: BlockRef) -> tuple[str, ...]:
     return tuple(dim for dim, moves in zip(DECODED_DIMS, varies) if moves)
 
 
+def decoder_dof(ref: BlockRef) -> int:
+    """How many degrees of freedom the online decoder of a closed-loop block emitted.
+
+    All four on the four-degree-of-freedom task, which a two-output decoder cannot
+    drive, and :data:`DECODER_DOF` on the two-degree-of-freedom task.
+    """
+    if len(target_dof(ref)) == len(DECODED_DIMS):
+        return len(DECODED_DIMS)
+    return DECODER_DOF[ref.label]
+
+
+def new_targets(ref: BlockRef) -> int:
+    """How many :data:`FINGERS` each outward trial of a closed-loop block moves.
+
+    The return trial that follows brings the same fingers back to neutral. Two in every
+    block except blocks 44, 46, 47 and 50 of 2023-04-13, where the authors cued one
+    finger at a time.
+    """
+    off = trial_targets(ref) != POSITION_NEUTRAL
+    moved = sum(off[:, list(dims)].any(axis=1) for dims in FINGERS.values())
+    counts = np.unique(moved[moved > 0])
+    if counts.size != 1:
+        raise ValueError(f"{ref.label}: outward trials move {counts.tolist()} fingers")
+    return int(counts[0])
+
+
 def cue_windows(ref: BlockRef) -> list[tuple[int, int, str]]:
     """``(start, stop, condition)`` neural-bin ranges of an open-loop block's go periods.
 
-    The open-loop blocks alternate a 1 s preparation phase (``hand_color == 1``) with a
-    2 s go phase (``hand_color == 2``) while the cued posture changes every 3 s, so the
-    go periods are the 2 s windows the authors average over. ``condition`` is the
-    matching :data:`OPEN_LOOP_CONDITIONS` name.
+    The open-loop blocks alternate 1 s with the fingers still (``hand_color == 1``)
+    with a 2 s go phase (``hand_color == 2``) while the cued posture changes every 3 s,
+    so the go periods are the 2 s windows the authors average over. ``condition`` is the
+    :data:`OPEN_LOOP_CONDITIONS` name of the posture the phase ends at, or the
+    :data:`OPEN_LOOP_RETURNS` name when it ends at neutral after an outward movement.
     """
     if ref.kind != KIND_OPEN_LOOP:
         raise ValueError(f"{ref.label}: cues are defined for open-loop blocks only")
@@ -472,20 +583,26 @@ def cue_windows(ref: BlockRef) -> list[tuple[int, int, str]]:
         clock[[start for start, _ in runs]],
         clock[[stop - 1 for _, stop in runs]],
     )
-    conditions = [
-        OPEN_LOOP_CONDITIONS[tuple(target[stop - 1, list(DECODED_COLUMNS)])]
-        for _, stop in runs
-    ]
+    conditions = []
+    previous = (POSITION_NEUTRAL,) * len(DECODED_COLUMNS)
+    for _, stop in runs:
+        end = tuple(target[stop - 1, list(DECODED_COLUMNS)])
+        condition = OPEN_LOOP_CONDITIONS[end]
+        if condition == "rest" and previous != end:
+            condition = OPEN_LOOP_RETURNS[previous]
+        conditions.append(condition)
+        previous = end
     return [(a, b, condition) for (a, b), condition in zip(spans, conditions)]
 
 
-def quadcopter_path(data_dir: str | Path = DEFAULT_DATA_DIR) -> np.ndarray:
+def quadcopter_path(data_dir: str | Path | None = None) -> np.ndarray:
     """The saved quadcopter flight path as ``(n_samples, 3)`` in ``x, y, z``.
 
     The file carries no clock, so the sample rate is not recoverable; the authors plot
     it against sample index. ``z`` points down, so elevation is ``-z`` (their
     ``PlotFlightPath.m`` plots ``x, y, -z`` against rings centred at ``z = +14.91``).
     """
+    data_dir = default_data_dir() if data_dir is None else data_dir
     refs = [ref for ref in list_blocks(data_dir) if ref.kind == KIND_QUADCOPTER]
     if len(refs) != 1:
         raise ValueError(f"expected exactly one quadcopter block, found {len(refs)}")

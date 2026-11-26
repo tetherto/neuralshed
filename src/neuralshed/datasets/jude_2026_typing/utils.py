@@ -8,9 +8,9 @@ injury, six arrays in area 6d, four left and two right hemisphere, no microphone
 
 On-disk layout (fetched by ``study.Jude2026Typing.download`` via the shared Dryad backend)::
 
-    <NEURALSHED_DATA_ROOT>/jude_2026_typing/data/Jude2026Typing/   DATA_DIR
+    <NEURALSHED_DATA_ROOT>/jude_2026_typing/data/Jude2026Typing/   default_data_dir()
     ├── README.md                                  Dryad description + block tables
-    └── Data/                                      BLOCKS_ROOT
+    └── Data/                                      default_blocks_root()
         ├── t17/t17.YYYY.MM.DD/<Typing|brainToText>/RedisMat/
         │   ├── YYYYMMDD_HHMMSS_(<block>).mat      one block per file
         │   └── YYYYMMDD_HHMMSS_(<block>).png      single-trial feature preview
@@ -19,7 +19,7 @@ On-disk layout (fetched by ``study.Jude2026Typing.download`` via the shared Drya
 Per-block ``.mat`` fields:
 
     binned_neural_threshold_crossings  int16   (n_bins, 384)    -3.5 x SD counts per 10 ms bin
-    binned_neural_spike_band_power     single  (n_bins, 384)    sum sq voltage per 10 ms bin
+    binned_neural_spike_band_power     single  (n_bins, 384)    mean sq voltage per 10 ms bin
     binned_neural_nsp_timestamp        double  (1, n_bins)      NSP time (ns) per bin
     binned_neural_redis_clock          uint64  (1, n_bins)      BRAND/Redis time (ms) per bin
     cue                                char    (n_trials,)      cued sentence, movement or key
@@ -48,13 +48,20 @@ import scipy.io
 from neuralshed.datasets import participants
 from neuralshed.datasets.utils import dataset_dir
 
+
 # --- Constants -----------------------------------------------------------------
 # Data lives under the StudyClassName wrapper so the neuralset Study base (which
 # resolves self.path = <data>/Jude2026Typing) and these accessors read the same tree.
-DATA_DIR = (
-    dataset_dir("jude_2026_typing") / "data" / "Jude2026Typing"
-)  # holds README.md + Data/
-BLOCKS_ROOT = DATA_DIR / "Data"  # holds t17/ + t18/
+def default_data_dir() -> Path:
+    """This dataset's data folder under ``NEURALSHED_DATA_ROOT``."""
+    return dataset_dir("jude_2026_typing") / "data" / "Jude2026Typing"
+
+
+def default_blocks_root() -> Path:
+    """Block folder holding ``t17/`` and ``t18/``."""
+    return default_data_dir() / "Data"
+
+
 SUBJECTS = ("T17", "T18")
 DRYAD_DOI = "10.5061/dryad.cz8w9gjjk"
 # Version 2; Data.zip unpacks to Data/. LanguageModels.zip (the 5-gram LM) is out of scope.
@@ -316,8 +323,9 @@ def post_implant_day(session: str) -> int:
     return day
 
 
-def list_sessions(blocks_root: str | Path = BLOCKS_ROOT) -> list[str]:
+def list_sessions(blocks_root: str | Path | None = None) -> list[str]:
     """All session names (``t1?.YYYY.MM.DD``) across both participants, sorted."""
+    blocks_root = default_blocks_root() if blocks_root is None else blocks_root
     root = Path(blocks_root)
     out = []
     for part in ("t17", "t18"):
@@ -331,16 +339,18 @@ def list_sessions(blocks_root: str | Path = BLOCKS_ROOT) -> list[str]:
     return sorted(out)
 
 
-def session_dir(session: str, blocks_root: str | Path = BLOCKS_ROOT) -> Path:
+def session_dir(session: str, blocks_root: str | Path | None = None) -> Path:
     """The session's ``RedisMat`` folder (under its single Typing/brainToText/Handwriting task dir)."""
+    blocks_root = default_blocks_root() if blocks_root is None else blocks_root
     sdir = Path(blocks_root) / session.split(".")[0] / session
     for rm in sorted(sdir.glob("*/RedisMat")):
         return rm
     raise FileNotFoundError(f"no */RedisMat under {sdir}")
 
 
-def session_modality(session: str, blocks_root: str | Path = BLOCKS_ROOT) -> str:
+def session_modality(session: str, blocks_root: str | Path | None = None) -> str:
     """Recording-task folder name for a session (``Typing``/``brainToText``/``Handwriting``)."""
+    blocks_root = default_blocks_root() if blocks_root is None else blocks_root
     return session_dir(session, blocks_root).parent.name
 
 
@@ -359,12 +369,13 @@ def _block_files(session: str, blocks_root: str | Path) -> list[Path]:
 
 
 def list_blocks(
-    session: str, blocks_root: str | Path = BLOCKS_ROOT
+    session: str, blocks_root: str | Path | None = None
 ) -> list[tuple[int, Path]]:
     """``(block_number, path)`` for every block in a session, sorted by block.
 
     Skips the files in ``DUPLICATE_FILES``, so each block number appears once.
     """
+    blocks_root = default_blocks_root() if blocks_root is None else blocks_root
     skip = DUPLICATE_FILES.get(session, {})
     blocks = sorted(
         (_block_num(p), p)
@@ -377,8 +388,9 @@ def list_blocks(
     return blocks
 
 
-def block_path(session: str, block: int, blocks_root: str | Path = BLOCKS_ROOT) -> Path:
+def block_path(session: str, block: int, blocks_root: str | Path | None = None) -> Path:
     """Path to one block's ``.mat`` file."""
+    blocks_root = default_blocks_root() if blocks_root is None else blocks_root
     for b, p in list_blocks(session, blocks_root):
         if b == block:
             return p
@@ -406,7 +418,7 @@ def expected_blocks() -> dict[str, set[int]]:
 
 
 def verify_tree(
-    data_dir: str | Path = DATA_DIR, readme_digest: str | None = None
+    data_dir: str | Path | None = None, readme_digest: str | None = None
 ) -> list[str]:
     """Problems with the extracted deposit under ``data_dir``, empty when it is complete.
 
@@ -414,6 +426,7 @@ def verify_tree(
     exactly the blocks of ``expected_blocks()`` plus its ``DUPLICATE_FILES``, and that
     each block file opens with ``scipy.io.whosmat``.
     """
+    data_dir = default_data_dir() if data_dir is None else data_dir
     import hashlib
 
     data_dir = Path(data_dir)

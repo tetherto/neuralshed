@@ -208,20 +208,20 @@ def trajectory_view(ctx: EventViewContext) -> go.Figure:
 def default_event_view_registry() -> EventViewRegistry:
     """Fresh registry containing generic and neuralshed-specific views."""
     registry = EventViewRegistry()
-    registry.register(etypes.Event, fields_view, name="fields", label="Fields")
+    registry.register(
+        etypes.Event, fields_view, name="fields", label="Fields", default=True
+    )
     registry.register(
         etypes.BaseText,
         text_view,
         name="text",
         label="Text",
-        default=True,
     )
     registry.register(
         DenseArrayEvent,
         heatmap_view,
         name="heatmap",
         label="Heatmap",
-        default=True,
         time_sensitive=True,
     )
     registry.register(
@@ -229,7 +229,6 @@ def default_event_view_registry() -> EventViewRegistry:
         traces_view,
         name="traces",
         label="Traces",
-        default=True,
         time_sensitive=True,
     )
     registry.register(
@@ -237,7 +236,6 @@ def default_event_view_registry() -> EventViewRegistry:
         trajectory_view,
         name="trajectory",
         label="Trajectory",
-        default=True,
         time_sensitive=True,
     )
     return registry

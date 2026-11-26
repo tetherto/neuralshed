@@ -40,7 +40,7 @@ DATASET_METADATA = {
     "at acquisition) on 2024.04.15/16/17. The Study emits channels in utils.ARRAY_ORDER "
     "(6v, 55b, 6d, one block of 64 per array), permuting the three March and early April "
     "sessions whose files order the arrays 6d, 6v, 55b. Threshold at -3.5xSD; spike-band "
-    "power = sum of squared voltages per 10 ms bin, capped at 50,000. The online decoder "
+    "power = mean of squared voltages per 10 ms bin, capped at 50,000. The online decoder "
     "of the closed-loop blocks ran on 64, 128 or 147 electrodes depending on the day "
     "(README, Online decoder configuration), never on all 256 or 384. Phased "
     "read/imagined/attempted task is session 2024.05.23 only. Code Zenodo DOI "
@@ -161,7 +161,7 @@ DATASET_METADATA = {
             "bin_size_ms": 10.0,
             "rate_hz": 100.0,
             "dtype": "float32",
-            "description": "Spike-band power (sum of squared 250 Hz-5 kHz voltages, capped "
+            "description": "Spike-band power (mean of squared 250 Hz-5 kHz voltages, capped "
             "at 50,000 uV^2) per 10 ms bin, same (n_bins, n_channels) shape as "
             "threshold_crossings. Raw, emitted in Study column order.",
         },

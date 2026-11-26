@@ -171,7 +171,8 @@ WORD_BOUNDARY = "|"
 
 def _g2p_symbols(text: str, g2p: tp.Callable[[str], tp.Sequence[str]]) -> list[str]:
     """``g2p`` output as ``ARPABET_V1`` symbols: a ``WORD_BOUNDARY`` for every space it
-    emits, stress digits dropped, anything else that is not a phoneme (punctuation) dropped."""
+    emits, stress digits dropped, anything else that is not a phoneme (punctuation) dropped.
+    """
     out = []
     for p in g2p(text):
         if p == " ":

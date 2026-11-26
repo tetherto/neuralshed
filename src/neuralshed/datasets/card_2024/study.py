@@ -66,6 +66,32 @@ class Card2024Brain2Text(NeuralshedStudy):
         "10,948 trials; test labels held out for the Brain-to-Text '25 challenge "
         "(Card et al. 2024, t15_copyTask)."
     )
+    timeline_descriptions: tp.ClassVar[dict[str, dict[tp.Any, str]]] = {
+        "task_condition": {
+            "attempted": (
+                "In the copy task, a sentence cue appears on a monitor during an "
+                "instructed delay, a square turns from red to green as the go cue, and "
+                "T15 attempts to speak the sentence. The timeline is one pre-cropped "
+                "clip that starts about 1 s before the go cue, or at the go cue on the "
+                "first trial of a block, and has no cue or go timestamps."
+            ),
+        },
+        "original_split": {
+            "train": (
+                "This trial is in the authors' train split and carries its Sentence cue "
+                "with the ARPAbet phoneme target."
+            ),
+            "val": (
+                "This trial is in the authors' validation split and carries its "
+                "Sentence cue with the ARPAbet phoneme target."
+            ),
+            "test": (
+                "This trial is in the authors' test split, held out for the "
+                "Brain-to-Text '25 challenge. It carries the neural features only, with "
+                "no Sentence cue."
+            ),
+        },
+    }
     requirements: tp.ClassVar[tuple[str, ...]] = ("h5py",)
 
     _info: tp.ClassVar[study.StudyInfo] = study.StudyInfo(
@@ -113,6 +139,7 @@ class Card2024Brain2Text(NeuralshedStudy):
                         block=t.block,  # recording block
                         trial_id=t.trial,  # source trial_num, unique within (session, block)
                         task_condition="attempted",
+                        **utils.loop_type_entry(ref.post_implant_day),
                     )
 
     def _load_features(self, timeline: dict[str, tp.Any], stream: str) -> np.ndarray:

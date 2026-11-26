@@ -53,12 +53,18 @@ DATASET_METADATA = {
         {
             "label": "T5",
             "participant_id": "braingate2/T5",  # datasets/participants.py
+            # The paper's "69 years old at the time of the study". The sessions span 2016
+            # to 2021 and willet_2021 gives P65Y in 2019, so T5 was about 62 to 67 when
+            # these were recorded. P69Y follows the paper, as fan_2023, deo_2024 and
+            # willsey_2025 do.
             "age": "P69Y",
             "time_since_implant": "P40D",  # first session 2016-09-26, implant 2016-08-17
             "clinical_condition": [
                 "Spinal cord injury (C4 AIS-C)",
                 "Tetraplegia",
             ],
+            # The source does not state the per-array split. Names/ranges follow the other T5
+            # datasets, a candidate from docs/channel_mapping/t5.md.
             "arrays": [
                 {
                     "name": "lateral_array",
@@ -122,7 +128,7 @@ DATASET_METADATA = {
             "signal_type": "kinematics",
             "modality": "behavior",
             "rate_hz": 50.0,
-            "dtype": "int16",
+            "dtype": "int16/float64",
             "description": "Cued target-center x and y position on the task screen.",
         },
         {
@@ -145,22 +151,25 @@ DATASET_METADATA = {
             "signal_type": "other",
             "modality": "derived",
             "rate_hz": 50.0,
-            "dtype": "uint8",
+            "dtype": "uint8/float64",
             "description": (
-                "Binary output of the online neural click decoder, emitted on the 195 "
-                "blocks that ran one (source field 14)."
+                "Output of the online neural click decoder (source field 11, decClick), "
+                "emitted on the 195 blocks that ran one (field 14, decodingClick). It is "
+                "0 or 1 on the 138 click blocks of 2016 and 2017, 0 or 2 on the 55 of 2021 "
+                "and continuous on t5.2016.10.31 blocks 7 and 9, and only the 0/1 blocks "
+                "carry valid=True (README)."
             ),
         },
         {
             "name": "target_cue",
             "category": "categorical",
             "event_class": "Stimulus",
-            "task_condition": "attempted",
+            "task_condition": "na",
             "description": (
                 "Visual presentation of the target to acquire, one per trial. Its code is "
                 "the block-local index into that block's distinct target centres, since "
-                "the layout varies (radial-8 plus centre, a grid of up to 55 cells, or "
-                "randomly placed targets)."
+                "the layout varies (8 or 6 targets around a centre target or 6 on a line "
+                "through it, a grid of up to 57 cells, or randomly placed targets)."
             ),
         },
         {
@@ -171,6 +180,18 @@ DATASET_METADATA = {
             "description": (
                 "Attempted hand movement, as though using a joystick, driving the cursor "
                 "toward the cued target. Carries the trial's success or failure outcome."
+            ),
+        },
+        {
+            "name": "return_to_centre",
+            "category": "categorical",
+            "event_class": "AutoMovement",
+            "task_condition": "na",
+            "description": (
+                "On 2021 blocks whose trials open with a 0.5 s decoder lockout, the task "
+                "moves the cursor back to the centre during the lockout of each return "
+                "trial. One per such trial, with no outcome (the source marks all of them "
+                "successful)."
             ),
         },
     ],

@@ -16,7 +16,7 @@ Intracortical brain-to-text speech neuroprosthesis in one BrainGate2 participant
 
 - Human. Single BrainGate2 clinical-trial participant **T12**, registered as `braingate2/T12` in `datasets/participants.py`: a left-handed woman, 67 at the time of recording, with slowly progressive bulbar-onset amyotrophic lateral sclerosis (ALS) diagnosed at 59 (ALSFRS-R 26 at enrollment). She has been severely dysarthric for nearly eight years: she vocalizes while attempting to speak and produces some differentiable vowels, but no intelligible consonants or sentences. She retains partial use of her limbs and communicates through a writing board or tablet (supplement 1.1).
 - **Implant:** four 64-electrode 1.5 mm SIROF Blackrock Utah arrays (**256 electrodes total**) placed on `2022-03-30` in the left hemisphere, two in **area 6v** of the ventral precentral gyrus and two in **area 44** of the inferior frontal gyrus (part of Broca's area), located with the Human Connectome Project multimodal parcellation. Two Neural Signal Processors (NSP1, NSP2), each wired to the two arrays of one area. The sentence sessions span post-implant days 29-148. Area 6v carries rich, spatially intermixed tuning to speech articulators, area 44 showed minimal production-related activity and was not decoded from.
-- **Channel order.** The Study emits the 256 channels in array order, one block of 64 per array (`dorsal_6v, ventral_6v, dorsal_44, ventral_44`, the source's superior and inferior arrays). The source files interleave the arrays, see [Channel order](#channel-order). No verified channel correspondence with T12's arrays in `kunz_2025` is documented.
+- **Channel order.** The Study emits the 256 channels in array order, one block of 64 per array (`ventral_6v, dorsal_6v, ventral_44, dorsal_44`, the source's inferior and superior arrays), each array in the grid order of the authors' `unscrambleChans`. The source files interleave the arrays, see [Channel order](#channel-order). This is the column layout `kunz_2025` uses for T12, a correspondence inferred from the data.
 
 ## Behavioral Task
 
@@ -103,7 +103,7 @@ The Dryad deposit holds one tarball per data group. `Willett2023Sentences.downlo
 
 ```
 <NEURALSHED_DATA_ROOT>/willet_2023/
-├── data/Willett2023Sentences/                # <- the Study path (utils.source_root())
+├── data/Willett2023Sentences/                # <- the Study path (utils.default_data_dir())
 │   ├── sentences/                            24 x t12.YYYY.MM.DD_sentences.mat
 │   ├── sentences_readme.txt                  variable descriptions and the array grids
 │   ├── dryad_willet_2023_success_download.txt
@@ -149,7 +149,7 @@ All files are MATLAB `.mat`, read with `scipy.io.loadmat(..., simplify_cells=Tru
 
 The `sentencesFeatures` slice was checked on all 10,900 trials, the competition slice on all 9,680 train and test clips. The Study keeps the documented go epoch.
 
-## Study, timelines and events
+## Study, timelines and Events
 
 [`study.py`](study.py) defines **`Willett2023Sentences`**: **one timeline per recording block** (306 blocks across the 24 session files). A session file concatenates blocks recorded minutes to an hour apart with their clocks re-zeroed at every block seam, so the block is the largest span on one continuous timebase. The timeline dict broadcasts to every event row:
 
@@ -184,18 +184,18 @@ Both neural rows carry a `processing` string with the source chain (high-pass, r
 Two column orders appear in this dataset:
 
 - **File order** is the order of the 256 columns in the source `.mat` matrices (`spikePow`, `tx1`-`tx4`). The four arrays are interleaved in it: 6v superior holds file columns 32-95, 6v inferior 0-31 and 96-127, 44 superior 160-223, 44 inferior 128-159 and 224-255.
-- **Array order** is the order of the 256 columns in the neural rows the Study emits (`SpikeCounts`, `BandPower`): one contiguous block of 64 per array, 6v superior, 6v inferior, 44 superior, 44 inferior, with the file columns of an array kept ascending inside its block. `_load_binned` converts file order to array order with `utils.CHANNEL_ORDER`.
+- **Array order** is the order of the 256 columns in the neural rows the Study emits (`SpikeCounts`, `BandPower`): one contiguous block of 64 per array, 6v inferior, 6v superior, 44 inferior, 44 superior, each array in grid order. Grid order is the order of the authors' `unscrambleChans`: down each grid column from the top row, anterior column first, and reversed for area 44. `_load_binned` converts file order to array order with `utils.CHANNEL_ORDER`.
 
 | array | array-order columns (Study rows) | file-order columns (source `.mat`) |
 | --- | --- | --- |
-| `dorsal_6v` | 0-63 | 32-95 |
-| `ventral_6v` | 64-127 | 0-31, 96-127 |
-| `dorsal_44` | 128-191 | 160-223 |
-| `ventral_44` | 192-255 | 128-159, 224-255 |
+| `ventral_6v` | 0-63 | 0-31, 96-127 |
+| `dorsal_6v` | 64-127 | 32-95 |
+| `ventral_44` | 128-191 | 128-159, 224-255 |
+| `dorsal_44` | 192-255 | 160-223 |
 
-The coarse split is the same in both orders (6v = columns 0-127, 44 = columns 128-255). `utils.STUDY_ARRAY_SLICES` gives the array-order block of each array, `utils.ARRAY_CHANNELS` its file-order columns, and `utils.to_array_order` converts a `(T, 256)` matrix from file order to array order. Everything read outside the Study is in file order: the `utils.py` loaders, the competition clips, the authors' `tx1[:, :128]` baseline and the `derived/` TFRecords.
+The coarse split is the same in both orders (6v = columns 0-127, 44 = columns 128-255). `utils.STUDY_ARRAY_SLICES` gives the array-order block of each array, `utils.ARRAY_CHANNELS` its file columns in grid order, and `utils.to_array_order` converts a `(T, 256)` matrix from file order to array order. Everything read outside the Study is in file order: the `utils.py` loaders, the competition clips, the authors' `tx1[:, :128]` baseline and the `derived/` TFRecords.
 
-Which file column belongs to which array comes from the four 8x8 grids printed in the `*_readme.txt` files, the **readme grid mapping**, transcribed in `utils.ARRAY_GRIDS`. Anterior is on the left and superior at the top. The shaded cells are the file columns that break the contiguity of the two inferior arrays. The authors' reference code encodes the same membership: `unscrambleChans` in [`AnalysisExamples/analysis.py`](https://github.com/fwillett/speechBCI/blob/522a9605ccf0818def80b6fd80007598e790408e/AnalysisExamples/analysis.py#L22-L35) applies a hard-coded 128-channel permutation to each NSP half, and its electrodes 0-63 are exactly the file columns of the inferior array and 64-127 those of the superior array, on both NSPs. It orders the channels by physical grid position, the Study by ascending file column within each array.
+Which file column belongs to which array comes from the four 8x8 grids printed in the `*_readme.txt` files, the **readme grid mapping**, transcribed in `utils.ARRAY_GRIDS`. Anterior is on the left and superior at the top. The shaded cells are the file columns that break the contiguity of the two inferior arrays. The authors' reference code encodes the same membership: `unscrambleChans` in [`AnalysisExamples/analysis.py`](https://github.com/fwillett/speechBCI/blob/522a9605ccf0818def80b6fd80007598e790408e/AnalysisExamples/analysis.py#L22-L35) applies a hard-coded 128-channel permutation to each NSP half, and its electrodes 0-63 are exactly the file columns of the inferior array and 64-127 those of the superior array, on both NSPs. It orders the channels by physical grid position, and the Study uses the same order.
 
 <img src="assets/array_grids.png" alt="The four 8x8 electrode grids of the deposit readme, with the file column of each electrode" width="820">
 
@@ -207,12 +207,12 @@ A sanity check on the data supports the readme grid mapping (`spikePow`, whole s
 
 <img src="assets/array_grid_verification.png" alt="Correlation matrices in file order and array order, and the per-channel test per session" width="960">
 
-**No verified channel correspondence with other T12 datasets is documented.** [kunz_2025](../kunz_2025/README.md) records the same participant and declares the same four arrays and areas, in its own column order (inferior array first in each pair). The same chronic implants may correspond physically, but no crosswalk has been established, so a column there and a column here cannot be treated as the same electrode. Pool the two datasets by array or area, never by column index.
+**Correspondence with kunz_2025.** [kunz_2025](../kunz_2025/README.md) records the same participant with the same four arrays, in the same array order as this Study. No recording is in both releases, so the electrode correspondence is a candidate inferred from channel correlations. It holds for the array order and for the electrode order of `ventral_6v`, `dorsal_6v` and `dorsal_44`. `ventral_44` (columns 128-191) uses the same grid order by convention. The data do not confirm its orientation, so its electrode-level match is weaker than for the other arrays. The analysis is in [T12 channel correspondence](../../../../docs/channel_mapping/t12.md).
 
 ## Notes / Scope
 
 - **Sentences only.** The `diagnosticBlocks`, `tuningTasks`, `competitionData` and `derived` archives, the language models, the audio streams and every real-time decoder field are out of scope. The audio is out of scope because it is near silent on the mimed days and carries the computer's voice in closed-loop blocks (see Data Modalities).
-- **Download** via `Study.download()` fetches `sentences.tar.gz` and its readme only and writes `dryad_willet_2023_success_download.txt` next to them. **Source path** is `dataset_dir("willet_2023") / "data"`, which the Study resolves to `data/Willett2023Sentences/`, the same folder as `utils.source_root()`. Artifacts read the raw `.mat` files directly.
+- **Download** via `Study.download()` fetches `sentences.tar.gz` and its readme only and writes `dryad_willet_2023_success_download.txt` next to them. **Source path** is `dataset_dir("willet_2023") / "data"`, which the Study resolves to `data/Willett2023Sentences/`, the same folder as `utils.default_data_dir()`. Artifacts read the raw `.mat` files directly.
 - **The published split rides on `original_split`.** `competitionData` reformats the same sentence go-periods and partitions them by block: the last competition-eligible large-vocabulary block of a day is `test`, the rest are `train`. Those block numbers are the sentences files' `blockNum`, so `utils.COMPETITION_BLOCKS` carries them as a table (24 sessions) and the Study labels each block from it, which keeps the 3.7 GB archive out of the download. Coverage is partial by design (8,800 train / 880 test / 1,220 unassigned to the split of 10,900 sentences, all with their sentence text): 50-sentence-set blocks and repeated Switchboard blocks are in no partition and get `""`. The third partition, `competitionHoldOut` (1,200 trials, labels withheld), has no counterpart here, since its 15 blocks appear in no sentences file.
 - **Random splits leak.** 161 of the 9,634 distinct non-`Chang` sentences recur (351 trials), and 24 prompts occur in both the `train` and the `test` partition (24 test trials). The 50-sentence set recurs by design (1,075 trials). Three protocols serve different questions: `original_split` for comparability with the competition benchmark (block-based, not prompt-disjoint), grouping by normalized sentence text for prompt-disjoint evaluation, and splitting by session for temporal generalization.
 - **Session ids** (`t12.YYYY.MM.DD`) are shared by `iter_timelines()` and `metadata.sessions()` (both via `utils.list_sessions`), so `--check-sessions` passes (306 timelines / 24 labels).
@@ -220,11 +220,11 @@ A sanity check on the data supports the readme grid mapping (`spikePow`, whole s
 - **`spikePow` is unclipped**, unlike the clipped stream of `card_2024`, so extreme values can distort an ordinary per-channel z-score: exclude the invalid blocks first and consider clipping or robust scaling.
 - **Release note versus file.** The deposit README says block 5 of 06.28 was removed for a timing error, but the file holds block 5 (an `OL Switchboard` block) and skips block numbers 8, 13 and 15 instead. Take the released file as the authoritative object.
 
-## Files in this folder
+## Files
 
 - `__init__.py`: package marker.
 - `metadata.py`: catalog `DATASET_METADATA` (participant, arrays, brain-area ontology ids, events) + `sessions()` + `get_metadata()`.
-- `utils.py`: source readers (`source_root`, `list_sessions`, `load_sentences_session`, `load_variables`, `extract_trials`, `get_array_signal`, `session_summary`, block access for the Study, `competition_split_by_block`) and constants (`ARRAY_GRIDS` and the derived array-order tables, `SIGNAL_TYPES`, `COMPETITION_BLOCKS`, `INVALID_BLOCKS`, `BIN_SIZE_S`, `SAMPLING_RATE_HZ`). Every function that reads the drive takes the study folder as `root`.
+- `utils.py`: source readers (`default_data_dir`, `list_sessions`, `load_sentences_session`, `load_variables`, `extract_trials`, `get_array_signal`, `session_summary`, block access for the Study, `competition_split_by_block`) and constants (`ARRAY_GRIDS` and the derived array-order tables, `SIGNAL_TYPES`, `COMPETITION_BLOCKS`, `INVALID_BLOCKS`, `BIN_SIZE_S`, `SAMPLING_RATE_HZ`). Every function that reads the drive takes the study folder as `root`.
 - `study.py`: the neuralset `Study` (`Willett2023Sentences`), one timeline per block.
 - `assets/`: the array grid figure and the grid verification figure of the Channel order section, and the task-monitor used by notebook 01.
 - `01_explore_source_data.ipynb`: executed walkthrough of reading and visualizing the source data.

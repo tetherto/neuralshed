@@ -75,7 +75,7 @@ MOTOR_CURSOR_MEMBERS: dict[str, tuple[str, str, str]] = {
 #: 2-channel target is the right one: the arrays are in the left hand knob, where right-hand
 #: tuning is the strong one. Rows without an ``effector`` keep it. Open-loop blocks are the
 #: ones whose cursor follows the computer's trajectory rather than a decoder. Left-hand-only
-#: trials (``code == 2``) stop being triggers, since the right cursor is still during them.
+#: trials (``code == 2``) stop being triggers to select attempts involving the right hand.
 #: The part of deo's filter that holds whatever blocks are being read.
 DEO_RIGHT_CURSOR: str = "effector != 'left' and not (type == 'Action' and code == 2)"
 
@@ -86,17 +86,16 @@ DEO_RIGHT_CURSOR: str = "effector != 'left' and not (type == 'Action' and code =
 #: written as an event query. 30 of the 51 blocks survive this filter and 15 of those are
 #: assist-free throughout (the 9 grid blocks and 6 of the 9 day-468 radial8 ones).
 MOTOR_CURSOR_MEMBER_QUERIES: dict[str, str] = {
-    "deo_2024": f"{DEO_RIGHT_CURSOR} and loop_type == 'open_loop'",
+    "deo_2024": f"{DEO_RIGHT_CURSOR} and loop_type == 'open'",
     "singer_2025": "speech_condition == 'none'",
 }
 
-#: deo's closed-loop blocks, for the comparison that needs a decoder in the loop. Trials are
-#: dropped where the 10 s timeout ran out, which is a failure the release does not label,
-#: and ``closed_loop_recal`` stays out because its assistance is never logged.
+#: Deo closed-loop trials without the timeouts. Assisted recalibration stays out because
+#: its assistance levels are not released.
 MOTOR_CURSOR_MEMBER_QUERIES_CLOSED_LOOP: dict[str, str] = {
     "deo_2024": (
-        f"{DEO_RIGHT_CURSOR} and loop_type == 'closed_loop'"
-        " and not (type == 'Action' and duration > 9.9)"
+        f"{DEO_RIGHT_CURSOR} and loop_type == 'closed'"
+        " and not (type == 'Action' and success == False)"
     ),
 }
 

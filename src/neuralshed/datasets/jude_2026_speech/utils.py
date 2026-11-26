@@ -9,9 +9,9 @@ On-disk layout (populated by ``study.py``'s ``_download`` via the shared Dryad b
 
     <NEURALSHED_DATA_ROOT>/jude_2026_speech/
     └── data/
-        └── Jude2026IntendedSpeech/                     <- DATA_DIR (study subfolder)
+        └── Jude2026IntendedSpeech/                     <- default_data_dir()
             ├── README.md                              Dryad description + block tables
-            └── t17/
+            └── t17/                                   <- default_t17_dir()
                 └── t17.YYYY.MM.DD/                     14 session folders
                     └── brainToText/RedisMat/
                         ├── YYYYMMDD_HHMMSS_(<block>).mat   one block per file
@@ -20,7 +20,7 @@ On-disk layout (populated by ``study.py``'s ``_download`` via the shared Dryad b
 Per-block ``.mat`` fields (verified vs ``t17.2024.04.17/...(10).mat`` and siblings):
 
     binned_neural_threshold_crossings  int16   (n_bins, n_ch)   -3.5xSD counts / 10 ms bin
-    binned_neural_spike_band_power     float32 (n_bins, n_ch)   sum sq voltage / 10 ms bin
+    binned_neural_spike_band_power     float32 (n_bins, n_ch)   mean sq voltage / 10 ms bin
     binned_neural_nsp_timestamp        float64 (1, n_bins)      NSP time (ns) per bin
     cue                                char    (n_trials,)      cued language unit (padded)
     go_cue_nsp_neural_time             float64 (1, n_trials)    trial GO (ns), neural clock
@@ -51,11 +51,19 @@ from neuralshed.datasets import participants
 from neuralshed.datasets.utils import dataset_dir
 from neuralshed.text import ARPABET_V1, PhonemeTable
 
+
 # --- Constants -----------------------------------------------------------------
 # Data lands under data/<StudyClassName>/ (the neuralset Study resolves its own
 # subfolder on download); mirror it here so metadata.sessions() reads the same tree.
-DATA_DIR = dataset_dir("jude_2026_speech") / "data" / "Jude2026IntendedSpeech"
-T17_DIR = DATA_DIR / "t17"
+def default_data_dir() -> Path:
+    """This dataset's data folder under ``NEURALSHED_DATA_ROOT``."""
+    return dataset_dir("jude_2026_speech") / "data" / "Jude2026IntendedSpeech"
+
+
+def default_t17_dir() -> Path:
+    """Participant T17's folder inside :func:`default_data_dir`."""
+    return default_data_dir() / "t17"
+
 
 N_ARRAYS = 6  # six 64-channel Utah arrays, two per region
 CHANNELS_PER_ARRAY = 64
@@ -105,7 +113,7 @@ FILE_GROUPS = {
 
 PARTICIPANT_ID = "braingate2/T17"  # participants.py registry key, implant 2024-02-29
 DRYAD_DOI = "10.5061/dryad.vq83bk481"
-DRYAD_FILES = ("Data.zip", "README.md")  # version 8, Data.zip unpacks to t17/
+DRYAD_FILES = ("Data.zip", "README.md")  # version 8, Data.zip unpacks to Data/t17/
 
 # Block -> task family, transcribed from the Dryad README block tables (the .mat
 # block_description field is a generic string). Block 6 of 2024.05.23 is absent from the
@@ -340,9 +348,10 @@ CUE_PHONEMES = PhonemeTable(
 )
 
 
-def build_cue_phonemes(data_dir: str | Path = T17_DIR) -> PhonemeTable:
+def build_cue_phonemes(data_dir: str | Path | None = None) -> PhonemeTable:
     """Regenerate ``assets/cue_phonemes.json`` over every sentence and word cue of the
     catalogued blocks. Needs the ``g2p`` extra (``uv pip install -e ".[g2p]"``)."""
+    data_dir = default_t17_dir() if data_dir is None else data_dir
     cues: set[str] = set()
     for session, blocks in SESSION_BLOCKS.items():
         for block, fam in blocks.items():
@@ -375,8 +384,9 @@ _MARKER_SUFFIX = "_nsp_neural_time"
 
 
 # --- Session / block discovery -------------------------------------------------
-def list_sessions(data_dir: str | Path = T17_DIR) -> list[str]:
+def list_sessions(data_dir: str | Path | None = None) -> list[str]:
     """All session names (``t17.YYYY.MM.DD``), sorted chronologically."""
+    data_dir = default_t17_dir() if data_dir is None else data_dir
     data_dir = Path(data_dir)
     return sorted(
         p.name for p in data_dir.iterdir() if p.is_dir() and p.name.startswith("t17.2")
@@ -396,8 +406,9 @@ def post_implant_day(session: str) -> int:
     return day
 
 
-def session_dir(session: str, data_dir: str | Path = T17_DIR) -> Path:
+def session_dir(session: str, data_dir: str | Path | None = None) -> Path:
     """Path to a session's ``RedisMat`` folder (where the ``.mat`` blocks live)."""
+    data_dir = default_t17_dir() if data_dir is None else data_dir
     return Path(data_dir) / session / "brainToText" / "RedisMat"
 
 
@@ -406,15 +417,19 @@ def _block_num(path: Path) -> int:
     return int(path.stem.rsplit("(", 1)[1].rstrip(")"))
 
 
-def list_blocks(session: str, data_dir: str | Path = T17_DIR) -> list[tuple[int, Path]]:
+def list_blocks(
+    session: str, data_dir: str | Path | None = None
+) -> list[tuple[int, Path]]:
     """``(block_number, path)`` for every ``.mat`` block in a session, sorted by block."""
+    data_dir = default_t17_dir() if data_dir is None else data_dir
     rmdir = session_dir(session, data_dir)
     mats = [p for p in rmdir.glob("*.mat") if not p.name.startswith("._")]
     return sorted(((_block_num(p), p) for p in mats), key=lambda t: t[0])
 
 
-def block_path(session: str, block: int, data_dir: str | Path = T17_DIR) -> Path:
+def block_path(session: str, block: int, data_dir: str | Path | None = None) -> Path:
     """Path to one specific block's ``.mat`` file."""
+    data_dir = default_t17_dir() if data_dir is None else data_dir
     for b, p in list_blocks(session, data_dir):
         if b == block:
             return p
@@ -442,7 +457,7 @@ def expected_blocks() -> dict[str, set[int]]:
 
 
 def verify_tree(
-    data_dir: str | Path = DATA_DIR, readme_digest: str | None = None
+    data_dir: str | Path | None = None, readme_digest: str | None = None
 ) -> list[str]:
     """Problems with the extracted deposit under ``data_dir``, empty when it is complete.
 
@@ -450,6 +465,7 @@ def verify_tree(
     exactly the block files in ``SESSION_BLOCKS`` and ``EXCLUDED_BLOCKS``, and that each
     file except the one catalogued as unreadable opens with ``scipy.io.whosmat``.
     """
+    data_dir = default_data_dir() if data_dir is None else data_dir
     import hashlib
 
     data_dir = Path(data_dir)

@@ -31,7 +31,7 @@ PAUSED_BLOCKS = {
 
 
 def _drive():
-    if not utils.BLOCKS_ROOT.exists():
+    if not utils.default_blocks_root().exists():
         pytest.skip(
             f"jude_2026_typing data not mounted at {dataset_dir('jude_2026_typing')}"
         )
@@ -408,7 +408,7 @@ def test_t17_column_groups_match_jude_2026_speech_on_the_data():
     _drive()
     from neuralshed.datasets.jude_2026_speech import utils as speech
 
-    if not speech.T17_DIR.exists():
+    if not speech.default_t17_dir().exists():
         pytest.skip("jude_2026_speech data not mounted")
     field = "binned_neural_spike_band_power"
     late = ("t17.2024.05.28", 6)

@@ -99,6 +99,20 @@ def test_neuralshed_study_defaults_to_inline_timeline_loading(tmp_path):
     assert instance.timelines.infra is None
 
 
+def test_study_creates_its_dataset_folder_under_the_data_root(tmp_path, monkeypatch):
+    monkeypatch.setenv("NEURALSHED_DATA_ROOT", str(tmp_path))
+    _SyntheticStudy(path=tmp_path / "jude_2026_typing" / "data")
+    assert (tmp_path / "jude_2026_typing" / "data").is_dir()
+
+
+def test_study_creates_no_folders_under_a_missing_data_root(tmp_path, monkeypatch):
+    root = tmp_path / "unmounted"
+    monkeypatch.setenv("NEURALSHED_DATA_ROOT", str(root))
+    with pytest.raises(RuntimeError, match="must exist first"):
+        _SyntheticStudy(path=root / "jude_2026_typing" / "data")
+    assert not root.exists()
+
+
 def test_timeline_events_gain_dataset_and_multi_participant_provenance(tmp_path):
     instance = _SyntheticStudy(path=tmp_path)
 
@@ -267,3 +281,67 @@ def test_row_level_valid_overrides_the_timeline_default(tmp_path):
     assert events["valid"].dtype == bool
     assert events["valid"].tolist() == [True, False]
     assert events["valid_description"].tolist() == ["", "cut short"]
+
+
+class _LoopDefaultStudy(_SyntheticStudy):
+    timeline_defaults: tp.ClassVar[dict[str, tp.Any]] = {"loop_type": "closed"}
+
+    def iter_timelines(self):
+        yield {"subject": "T17", "session": "one"}
+        yield {"subject": "T17", "session": "two", "loop_type": "mixed"}
+
+    def _load_timeline_events(self, timeline):
+        rows = [
+            {"type": "Sentence", "start": 0.0, "duration": 1.0, "text": "a"},
+            {"type": "Sentence", "start": 1.0, "duration": 1.0, "text": "b"},
+        ]
+        if timeline["session"] == "two":
+            rows[1]["loop_type"] = "open"
+        return pd.DataFrame(rows)
+
+
+def test_study_timeline_defaults_fill_timelines_and_yield_to_event_rows(tmp_path):
+    instance = _LoopDefaultStudy(path=tmp_path)
+    summary = instance.study_summary(apply_query=False)
+    assert summary["loop_type"].tolist() == ["closed", "mixed"]
+    assert not summary["timeline"].str.contains("loop_type").any()
+    events = instance.run()
+    assert events["loop_type"].tolist() == ["closed", "closed", "mixed", "open"]
+    assert events["valid"].tolist() == [True] * 4
+
+
+def test_timeline_defaults_stay_with_the_study_that_declares_them(tmp_path):
+    class _Child(_LoopDefaultStudy):
+        timeline_defaults: tp.ClassVar[dict[str, tp.Any]] = {"vocab": "na"}
+
+    assert set(_Child._timeline_defaults) == {
+        "valid",
+        "valid_description",
+        "loop_type",
+        "vocab",
+    }
+    assert set(_SyntheticStudy._timeline_defaults) == {"valid", "valid_description"}
+
+
+@pytest.mark.parametrize(
+    "defaults", [{"session": "one"}, {"valid": False}, {"loop_type": None}]
+)
+def test_timeline_defaults_reject_owned_keys_and_non_scalar_values(defaults):
+    with pytest.raises(TypeError, match="timeline_defaults"):
+
+        class _Bad(_SyntheticStudy):
+            timeline_defaults: tp.ClassVar[dict[str, tp.Any]] = defaults
+
+
+def test_a_timeline_default_cannot_be_what_tells_two_timelines_apart(tmp_path):
+    class _Collapsed(_SyntheticStudy):
+        timeline_defaults: tp.ClassVar[dict[str, tp.Any]] = {"loop_type": "closed"}
+
+        def iter_timelines(self):
+            yield {"subject": "T17", "session": "one", "loop_type": "open"}
+            yield {"subject": "T17", "session": "one", "loop_type": "closed"}
+
+    instance = _Collapsed(path=tmp_path)
+    for _ in range(2):
+        with pytest.raises(ValueError, match="share an id"):
+            instance.study_summary(apply_query=False)

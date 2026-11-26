@@ -16,7 +16,7 @@ Intracortical BCI study of attempted handwriting in one BrainGate2 participant (
 - **T5** (`braingate2/T5` in `datasets/participants.py`, implant 2016-08-17): right-handed man, 65 years old at the time of data collection, with a C4 AIS C (motor incomplete) spinal cord injury about 9 years before enrollment (Supplementary Methods 1.1). Head, face and shoulder movement are intact. Voluntary movement below the injury is limited, mostly to the left elbow, and small micromotions of the right hand were visible during attempted handwriting.
 - **Implant:** two 96-electrode Blackrock NeuroPort arrays (1.5 mm electrode length, 0.4 mm pitch) in the hand knob of the left (dominant) precentral gyrus, implanted August 2016. Channels 0-95 are array 1 (more lateral), 96-191 are array 2 (more medial), per the deposit readme. `utils.ARRAY_GEOMETRY_MAP` holds the 10 x 10 electrode layout the files give.
 - **Sessions:** 11, post-implant days 994-1246 (2019-05-08 to 2020-01-15).
-- The same participant is recorded in `fan_2023`, `deo_2024`, `wilson_2025`, `willsey_2025` and `gusman_2025`. No source states that channel `i` here is the same electrode as channel `i` there, so channel order is treated as dataset-specific.
+- The same participant is recorded in `fan_2023`, `deo_2024`, `wilson_2025`, `willsey_2025` and `gusman_2025`. No source states that channel `i` here is the same electrode as channel `i` there. Channel correlations support a shared column order as a candidate, see [T5 channel correspondence](../../../../docs/channel_mapping/t5.md).
 
 ## Behavioral Task
 

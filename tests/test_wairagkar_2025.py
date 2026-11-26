@@ -1,7 +1,6 @@
 """wairagkar_2025 control-experiment reader invariants"""
 
 import datetime as dt
-from pathlib import Path
 
 import numpy as np
 import pytest
@@ -13,12 +12,8 @@ from neuralshed.datasets.wairagkar_2025.control_study import (
     Wairagkar2025ControlExperiment,
 )
 
-#: the two known homes of the release: the utils default (honours
-#: ``NEURALSHED_DATA_ROOT``) and this machine's raw download folder
-_CANDIDATES = (
-    utils.DEFAULT_CONTROL_DIR,
-    Path("/data/data/datasets/wairagkar/t15_control_experiment"),
-)
+#: where the release lives: the utils default, which honours ``NEURALSHED_DATA_ROOT``
+_CANDIDATES = (utils.default_control_dir(),)
 
 _SESSION = "t15_day482"
 
@@ -47,15 +42,29 @@ def _farm(tmp_path):
 def test_catalogue_is_the_published_release():
     release = _release()
     refs = utils.list_control_blocks(release)
-    assert [(r.session, r.block) for r in refs] == [(_SESSION, b) for b in range(10)], (
-        "step-8 D4: the reader must catalogue exactly these 10 blocks"
-    )
+    assert [(r.session, r.block) for r in refs] == [
+        (_SESSION, b) for b in range(10)
+    ], "step-8 D4: the reader must catalogue exactly these 10 blocks"
     for ref in refs:
         assert len(utils.get_control_sentences(ref)) == 24, ref.file_stem
         assert utils.get_block_description(ref), ref.file_stem
         # each block ships the online decoder trained on the other nine
         assert ref.decoder_path is not None, ref.file_stem
         assert ref.decoder_path.exists(), ref.decoder_path
+
+
+def test_download_succeeds_and_points_at_the_sibling_release(tmp_path, monkeypatch):
+    from neuralshed.datasets.wairagkar_2025.study import Wairagkar2025Brain2Voice
+
+    def fake_download(self, overwrite=False):
+        (self.path / utils.CONTROL_SUBDIR).mkdir()
+
+    monkeypatch.setattr(Wairagkar2025Brain2Voice, "_download", fake_download)
+    study = Wairagkar2025ControlExperiment(path=tmp_path)
+    study.download()  # raised "Directory is empty" before the pointer file
+    pointer = (study.path / "DATA_LOCATION.txt").read_text()
+    release = tmp_path / Wairagkar2025Brain2Voice.__name__ / utils.CONTROL_SUBDIR
+    assert str(release) in pointer
 
 
 # ---------------------------------------------------------------------------

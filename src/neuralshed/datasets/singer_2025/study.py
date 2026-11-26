@@ -1,6 +1,6 @@
 """neuralset Study for Singer-Clark et al. 2025 cursor control and click.
 
-One timeline is one released 3 to 5 minute task block. Neural features, cursor
+One timeline is one released task block of about 3 minutes. Neural features, cursor
 kinematics, online decoder outputs, and assist state remain whole-block lazy
 streams. Trial timing becomes visual ``Stimulus`` and imagined ``Action`` rows.
 Simultaneous speech blocks additionally emit word prompts, beep cues, attempted
@@ -32,6 +32,12 @@ from . import utils
 _SUBJECT = "T15"
 _RATE_HZ = utils.FS
 _BIN_SIZE_S = 1.0 / _RATE_HZ
+# Paper section 2.2. The released values are raw, so nothing here is a normalization.
+_LRR = "linear regression referencing per 64-electrode array"
+_PROCESSING = {
+    "threshold_crossings": f"{_LRR}; crossings detected per 1 ms and summed into 10 ms bins",
+    "spike_band_power": f"{_LRR}; squared signal averaged per 1 ms, then averaged into 10 ms bins",
+}
 
 
 class Singer2025CursorControl(NeuralshedStudy):
@@ -63,18 +69,73 @@ class Singer2025CursorControl(NeuralshedStudy):
         "The released 100 Hz streams include threshold crossings, spike-band power, "
         "cursor and target positions, assist state, and online cursor/click decoder output."
     )
+    timeline_descriptions: tp.ClassVar[dict[str, dict[tp.Any, str]]] = {
+        "task": {
+            "radial8_calibration": (
+                "In the radial8 calibration task, eight outer targets and a center target "
+                "appear in alternating center-out-and-back order. A target turning green "
+                "is both the cue and the go signal, and the next trial starts as soon as "
+                "one ends. A block can move from full computer assistance to closed-loop "
+                "control as the online decoder improves. The assistance covers cursor "
+                "movement and, when clicks are enabled, target selection "
+                "(CursorAssistSeries, ClickAssistSeries)."
+            ),
+            "grid_evaluation": (
+                "In the grid evaluation task, the targets are cells of a 14 by 14 grid "
+                "and the cursor is under closed-loop control throughout. A trial ends on "
+                "a selection or after a 10 s timeout, and the next target appears at once."
+            ),
+            "simultaneous_speech_and_cursor": (
+                "In the simultaneous speech and cursor task, a red target and a word "
+                "appear together. After a 1.3-1.7 s delay the target turns green and "
+                "cursor movement starts. On some trials a beep then cues the participant "
+                "to attempt the word while continuing cursor control. Trials are "
+                "separated by a 1 s intertrial period."
+            ),
+        },
+        "speech_condition": {
+            "verbal": (
+                "In this verbal block the participant attempts the word after the beep."
+            ),
+            "control": (
+                "In this control block the beep plays but the participant does not "
+                "speak."
+            ),
+        },
+        "click_enabled": {
+            True: (
+                "Targets are selected by an attempted click, read by an online click "
+                "decoder."
+            ),
+            False: (
+                "Targets are selected by holding the cursor on them for the dwell time "
+                "(dwell_requirement_sec)."
+            ),
+        },
+        "loop_type": {
+            "closed": "In this block the decoder alone moves the cursor in every trial.",
+            "assisted": (
+                "In this block the computer assistance steps down from full to none, so "
+                "trials range from fully assisted to closed loop (CursorAssistSeries). "
+                "Each cursor Action carries its own trial's loop_type."
+            ),
+        },
+    }
     requirements: tp.ClassVar[tuple[str, ...]] = ("scipy",)
+    # Each cursor Action carries its own trial's loop_type, the timeline value fills the rest
+    timeline_defaults: tp.ClassVar[dict[str, tp.Any]] = {"loop_type": "closed"}
 
-    # One timeline per task family, so the guard covers every emission path: the
-    # click streams (grid), and the word/beep/intertrial rows (speech).
+    # One timeline per emission path: dwell radial8 (0), verbal and control speech
+    # (8, 10, control emits no speech Action), click radial8 with click assist (33)
+    # and grid (36).
     # NB: `neuralfetch.utils.update_source_info` computes the counts from this
     # `query` but then omits `query` and `frequency` when it rewrites the block, so
     # re-add both by hand after running it, or the counts guard the wrong query.
     _info: tp.ClassVar[study.StudyInfo] = study.StudyInfo(
         num_timelines=51,
         num_subjects=1,
-        query="timeline_index in [0, 8, 36]",
-        num_events_in_query=400,
+        query="timeline_index in [0, 8, 10, 33, 36]",
+        num_events_in_query=660,
         event_types_in_query={
             "Action",
             "BandPower",
@@ -92,10 +153,10 @@ class Singer2025CursorControl(NeuralshedStudy):
         frequency=100.0,
     )
 
-    def _download(self) -> None:
+    def _download(self, overwrite: bool = False) -> None:
         """Download the current Dryad release into this Study's folder.
 
-        Dryad requires ``NEURALFETCH_DRYAD_TOKEN``. The speech-only comparison file is
+        Dryad requires ``NEURALFETCH_DRYAD_TOKEN``. The comparison file is
         downloaded for reference but excluded from :meth:`iter_timelines`.
         """
         from neuralshed.datasets.dryad import Dryad
@@ -106,7 +167,7 @@ class Singer2025CursorControl(NeuralshedStudy):
             folder=self.path.name,
             doi="10.5061/dryad.prr4xgxzq",
             include=["README.md", "t15_day*_task.mat", "t15_day00202_words.mat"],
-        ).download()
+        ).download(overwrite=overwrite)
 
     def _ref(self, timeline: dict[str, tp.Any]) -> utils.BlockRef:
         return utils.block_ref(self.path / timeline["path"])
@@ -114,25 +175,20 @@ class Singer2025CursorControl(NeuralshedStudy):
     def iter_timelines(self) -> tp.Iterator[dict[str, tp.Any]]:
         for ref in utils.list_blocks(self.path):
             fields = utils.available_fields(ref)
-            if ref.task == "radial8_calibration":
-                split = "calibration"
-            elif ref.task == "grid_evaluation":
-                split = "evaluation"
-            else:
-                split = "interference"
             yield {
                 "subject": _SUBJECT,
                 "session": ref.session,
-                "run": ref.run,
+                "block": ref.block,
                 "task": ref.task,
                 "path": ref.path.name,
                 "post_implant_day": ref.day,
-                "original_split": split,
+                "date": utils.session_date(ref.day),
                 "cursor_imagery": utils.CURSOR_IMAGERY_BY_DAY.get(
                     ref.day, "motor imagery"
                 ),
                 "click_enabled": "click_decoder_output" in fields,
                 "speech_condition": self._speech_condition(ref),
+                "loop_type": utils.loop_type(ref),
                 **utils.geometry(ref),
             }
 
@@ -184,6 +240,7 @@ class Singer2025CursorControl(NeuralshedStudy):
                 n_features=utils.N_ELECTRODES,
                 unit="counts/bin",
                 normalization="raw",
+                processing=_PROCESSING["threshold_crossings"],
                 method="threshold_crossing",
                 threshold="-4.5 x RMS",
             ),
@@ -193,6 +250,7 @@ class Singer2025CursorControl(NeuralshedStudy):
                 n_features=utils.N_ELECTRODES,
                 unit="uV^2",
                 normalization="raw",
+                processing=_PROCESSING["spike_band_power"],
                 lower_freq=250.0,
                 upper_freq=5000.0,
             ),
@@ -267,24 +325,37 @@ class Singer2025CursorControl(NeuralshedStudy):
         data = utils.load_block(ref)
         windows = utils.trial_windows(ref)
         targets = utils.get_series(ref, "target_position")
+        assist = utils.get_series(ref, "assist_amount")[:, 0]
         presentation = utils.trial_field(ref, "target_presentation_bin")
         cursor_go = utils.trial_field(ref, "cursor_go_cue_bin")
         speech_go = utils.trial_field(ref, "speech_go_cue_bin")
         prompts = utils.speech_prompts(ref)
+        # Without trial_end_bin a trial runs to the next start, so the last one is cut
+        # by the end of the recording: it shows no click, full dwell or timeout.
+        last_truncated = utils.trial_field(ref, "trial_end_bin") is None
 
         # Only the speech task separates trial start from target presentation, so only
         # it has a real intertrial period. Elsewhere the gap before the first trial is
         # a block lead-in, not an intertrial, and is left unlabelled.
         has_intertrial = presentation is not None
+        # The speech target stays on screen, red then green, across the delay and go,
+        # so its cue has no single period. Elsewhere the target appears as the go cue.
+        cue_period = {} if cursor_go is not None else {"period": "go"}
         rows: list[dict[str, tp.Any]] = []
         previous_stop = windows[0][0] if windows else 0
         for trial, (start, stop) in enumerate(windows):
             present = int(presentation[trial]) if presentation is not None else start
             go = int(cursor_go[trial]) if cursor_go is not None else start
-            present = min(max(present, start), stop)
-            go = min(max(go, present), stop)
-            target = targets[min(go, len(targets) - 1)]
+            target = targets[go]
             code = self._target_code(ref, target)
+            common: dict[str, tp.Any] = {
+                "trial_id": trial,
+                "target_x": float(target[0]),
+                "target_y": float(target[1]),
+            }
+            if last_truncated and trial == len(windows) - 1:
+                common["valid"] = False
+                common["valid_description"] = "trial truncated by block end"
 
             if has_intertrial and present > previous_stop:
                 rows.append(
@@ -293,6 +364,7 @@ class Singer2025CursorControl(NeuralshedStudy):
                         "start": previous_stop / _RATE_HZ,
                         "duration": (present - previous_stop) / _RATE_HZ,
                         "description": "gap before target presentation",
+                        "period": "intertrial",
                         "trial_id": trial,
                     }
                 )
@@ -306,9 +378,8 @@ class Singer2025CursorControl(NeuralshedStudy):
                     "modality": "visual",
                     "description": "cued cursor target",
                     "stimulus_kind": "target_cue",
-                    "trial_id": trial,
-                    "target_x": float(target[0]),
-                    "target_y": float(target[1]),
+                    **cue_period,
+                    **common,
                 }
             )
             rows.append(
@@ -320,27 +391,28 @@ class Singer2025CursorControl(NeuralshedStudy):
                     "description": "imagined cursor movement toward target",
                     "task_condition": "imagined",
                     "action_kind": "cursor_control",
-                    "trial_id": trial,
-                    "target_x": float(target[0]),
-                    "target_y": float(target[1]),
+                    "loop_type": utils.trial_loop_type(assist[go:stop]),
+                    "period": "go",
+                    **common,
                 }
             )
 
-            if prompts and trial < len(prompts) and prompts[trial]:
+            if prompts:
                 rows.append(
                     {
                         "type": "Word",
                         "start": present / _RATE_HZ,
-                        "duration": max(_BIN_SIZE_S, (go - present) / _RATE_HZ),
+                        "duration": (go - present) / _RATE_HZ,
                         "text": prompts[trial],
                         "language": "en",
                         "modality": "read",
+                        "period": "delay",
                         "trial_id": trial,
                     }
                 )
-            if speech_go is not None and trial < len(speech_go):
+            if speech_go is not None:
                 beep = int(speech_go[trial])
-                if beep >= 0 and beep < stop:
+                if beep >= 0:  # -1 marks a trial without a beep
                     rows.append(
                         {
                             "type": "Stimulus",
@@ -350,6 +422,7 @@ class Singer2025CursorControl(NeuralshedStudy):
                             "modality": "audio",
                             "description": "speech go cue beep",
                             "stimulus_kind": "speech_go_cue",
+                            "period": "go",
                             "trial_id": trial,
                         }
                     )
@@ -363,6 +436,8 @@ class Singer2025CursorControl(NeuralshedStudy):
                                 "description": "attempted prompted speech",
                                 "task_condition": "attempted",
                                 "action_kind": "speech",
+                                "text": prompts[trial],
+                                "period": "go",
                                 "trial_id": trial,
                             }
                         )

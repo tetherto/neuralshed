@@ -1,7 +1,5 @@
 """Catalog metadata for Singer-Clark et al. 2025."""
 
-import datetime as dt
-
 DATASET_METADATA = {
     "id": "singer_2025",
     "title": "Speech motor cortex enables BCI cursor control and click",
@@ -37,7 +35,7 @@ DATASET_METADATA = {
     "licence": "CC0-1.0",
     "notes": (
         "The paper reports six sessions from post-implant days 39 to 468. Dryad version "
-        "5 releases 51 cursor-task blocks from days 39, 202, and 468 plus one speech-only "
+        "5 releases 51 cursor-task blocks from days 39, 202, and 468 plus one "
         "comparison file: 2,521 cursor trials and 2.52 hours across the released blocks."
     ),
     "subjects": [
@@ -51,11 +49,20 @@ DATASET_METADATA = {
                 "Tetraplegia",
                 "Severe dysarthria",
             ],
+            # Array centers from the NEJM supplementary appendix S1.12 (MNI2009b asymmetric,
+            # registration-dependent estimate).
             "arrays": [
                 {
                     "name": "ventral_6v",
                     "hemisphere": "left",
                     "device_type": "utah_array",
+                    "stereotaxic_coordinates": {
+                        "space": "MNI152NLin2009bAsym",
+                        "unit": "mm",
+                        "x": -60.8,
+                        "y": 0.2,
+                        "z": 40.6,
+                    },
                     "n_channels": 64,
                     "channel_start": 0,
                     "channel_stop": 63,
@@ -65,6 +72,13 @@ DATASET_METADATA = {
                     "name": "4",
                     "hemisphere": "left",
                     "device_type": "utah_array",
+                    "stereotaxic_coordinates": {
+                        "space": "MNI152NLin2009bAsym",
+                        "unit": "mm",
+                        "x": -63.6,
+                        "y": 3.6,
+                        "z": 29.3,
+                    },
                     "n_channels": 64,
                     "channel_start": 64,
                     "channel_stop": 127,
@@ -74,6 +88,13 @@ DATASET_METADATA = {
                     "name": "55b",
                     "hemisphere": "left",
                     "device_type": "utah_array",
+                    "stereotaxic_coordinates": {
+                        "space": "MNI152NLin2009bAsym",
+                        "unit": "mm",
+                        "x": -57.2,
+                        "y": -1.1,
+                        "z": 48.5,
+                    },
                     "n_channels": 64,
                     "channel_start": 128,
                     "channel_stop": 191,
@@ -83,6 +104,13 @@ DATASET_METADATA = {
                     "name": "dorsal_6v",
                     "hemisphere": "left",
                     "device_type": "utah_array",
+                    "stereotaxic_coordinates": {
+                        "space": "MNI152NLin2009bAsym",
+                        "unit": "mm",
+                        "x": -64.5,
+                        "y": 5.3,
+                        "z": 21.6,
+                    },
                     "n_channels": 64,
                     "channel_start": 192,
                     "channel_stop": 255,
@@ -187,8 +215,8 @@ DATASET_METADATA = {
             "signal_type": "other",
             "modality": "derived",
             "rate_hz": 100.0,
-            "dtype": "float32",
-            "description": "Whether target selection was computer-assisted, when click was enabled. Source is uint8 0/1, read as float32.",
+            "dtype": "uint8",
+            "description": "Whether target selection was computer-assisted, when click was enabled. Values are 0 or 1.",
         },
         {
             "name": "click_decoder_output",
@@ -197,8 +225,8 @@ DATASET_METADATA = {
             "signal_type": "other",
             "modality": "derived",
             "rate_hz": 100.0,
-            "dtype": "float32",
-            "description": "Binary output of the online neural click decoder. Source is uint8 0/1, read as float32.",
+            "dtype": "uint8",
+            "description": "Binary output of the online neural click decoder. Values are 0 or 1.",
         },
         {
             "name": "target_cue",
@@ -252,21 +280,17 @@ DATASET_METADATA = {
 
 def sessions() -> list[dict]:
     """One row per released post-implant day, derived from downloaded block files."""
-    from neuralshed.datasets import participants
-
     from . import utils
 
     rows = []
     for label, blocks in utils.session_blocks().items():
         day = blocks[0].day
-        date = participants.implant_date("braingate2/T15")
-        session_date = (date + dt.timedelta(days=day)).isoformat() if date else None
         tasks = sorted({block.task_label for block in blocks})
         rows.append(
             {
                 "label": label,
                 "subject_label": "T15",
-                "date": session_date,
+                "date": utils.session_date(day),
                 "post_implant_day": day,
                 "n_trials": sum(len(utils.trial_windows(block)) for block in blocks),
                 "task": ", ".join(tasks),

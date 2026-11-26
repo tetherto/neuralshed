@@ -21,11 +21,15 @@ references an ``id`` that is not defined here.
 
 import datetime as dt
 
-#: Clinical trial each participant belongs to. A label is unique only within its
-#: namespace, so labels in different namespaces are unrelated.
+#: Clinical trial or lab each participant belongs to. A label is unique only within its
+#: namespace, so labels in different namespaces are unrelated (``miller/J`` and
+#: ``carmena/J`` are two monkeys).
 NAMESPACES = {
     "braingate2",  # NPTL / BrainGate2, NCT00912041 (Stanford/Davis/Brown/Emory)
     "pitt",  # Pitt / U Chicago iBCI, NCT01894802 (FALCON-H1 source)
+    "miller",  # Lee Miller lab, Northwestern University (monkeys)
+    "shenoy",  # Krishna Shenoy lab, Stanford University (monkeys)
+    "carmena",  # Jose Carmena lab, UC Berkeley (monkeys)
 }
 
 #: One entry per real person. ``id`` is the stable cross-dataset key (``<namespace>/<label>``)
@@ -139,6 +143,107 @@ PARTICIPANTS: list[dict] = [
         "description": (
             "University of Pittsburgh iBCI participant (FALCON-H1), identity redacted by "
             "the data owners. Two 96-ch hand-knob arrays. Separate numbering from BrainGate2."
+        ),
+    },
+    {
+        "id": "miller/C",
+        "label": "C",
+        "namespace": "miller",
+        "species": "macaque",
+        "sex": "M",
+        "handedness": "unknown",
+        "implant_date": None,
+        "description": (
+            "Miller lab rhesus macaque C. Right M1 Utah array (2013 to 2015), later left M1 "
+            "and left PMd arrays (2016). Planar-manipulandum reaching."
+        ),
+    },
+    {
+        "id": "miller/J",
+        "label": "J",
+        "namespace": "miller",
+        "species": "macaque",
+        "sex": "M",
+        "handedness": "unknown",
+        "implant_date": None,
+        "description": "Miller lab rhesus macaque J. M1 Utah array. Planar-manipulandum reaching.",
+    },
+    {
+        "id": "miller/M",
+        "label": "M",
+        "namespace": "miller",
+        "species": "macaque",
+        "sex": "M",
+        "handedness": "unknown",
+        "implant_date": None,
+        "description": (
+            "Miller lab rhesus macaque M. M1 and PMd Utah arrays, reached with the left "
+            "hand. Planar-manipulandum reaching."
+        ),
+    },
+    {
+        "id": "miller/T",
+        "label": "T",
+        "namespace": "miller",
+        "species": "macaque",
+        "sex": "M",
+        "handedness": "unknown",
+        "implant_date": None,
+        "description": (
+            "Miller lab Macaca fascicularis T. PMd Utah array (the perich_2018 files also "
+            "declare an M1 array). Planar-manipulandum reaching."
+        ),
+    },
+    {
+        "id": "shenoy/Jenkins",
+        "label": "Jenkins",
+        "namespace": "shenoy",
+        "species": "macaque",
+        "sex": "M",
+        "handedness": "unknown",
+        "implant_date": None,  # even_chen_2019: 74 months before late 2015, month precision only
+        "description": (
+            "Shenoy lab rhesus macaque J (JenkinsC in the even_chen_2019 files). Left M1 and "
+            "PMd Utah arrays. Reaching with an optically tracked hand."
+        ),
+    },
+    {
+        "id": "shenoy/Reggie",
+        "label": "Reggie",
+        "namespace": "shenoy",
+        "species": "macaque",
+        "sex": "M",
+        "handedness": "unknown",
+        "implant_date": None,  # even_chen_2019: 64 months before January 2017
+        "description": (
+            "Shenoy lab rhesus macaque R. Left M1 and PMd Utah arrays, the M1 array judged "
+            "unusable in even_chen_2019. Reaching with an optically tracked hand."
+        ),
+    },
+    {
+        "id": "carmena/G",
+        "label": "G",
+        "namespace": "carmena",
+        "species": "macaque",
+        "sex": "M",
+        "handedness": "unknown",
+        "implant_date": None,
+        "description": (
+            "Carmena lab rhesus macaque G (colony id mmu 38380). One 16 x 8 microwire array "
+            "per hemisphere over M1 and PMd. 2D cursor BMI with a Kalman filter."
+        ),
+    },
+    {
+        "id": "carmena/J",
+        "label": "J",
+        "namespace": "carmena",
+        "species": "macaque",
+        "sex": "M",
+        "handedness": "unknown",
+        "implant_date": None,
+        "description": (
+            "Carmena lab rhesus macaque J (colony id mmu 35195). One 16 x 8 microwire array "
+            "per hemisphere over M1 and PMd. 2D cursor BMI with a point-process filter."
         ),
     },
 ]

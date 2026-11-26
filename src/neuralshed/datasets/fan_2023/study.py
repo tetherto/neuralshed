@@ -84,6 +84,39 @@ class Fan2023Handwriting(NeuralshedStudy):
         "with the cued sentence, open-loop seed days and closed-loop recalibration days "
         "(CORP Dryad deposit, plus the FALCON H2 held-out days from DANDI 000950)."
     )
+    timeline_descriptions: tp.ClassVar[dict[str, dict[tp.Any, str]]] = {
+        "block_kind": {
+            "seed": (
+                "In a seed session, T5 sees no decoder output. Sessions 1-11 were "
+                "recorded to train the seed decoder offline."
+            ),
+            "recalibration": (
+                "In a recalibration block of an online session, T5 sees the decoded "
+                "text in real time while CORP recalibrates the decoder as T5 writes."
+            ),
+            "no_recalibration": (
+                "In the no-recalibration block of an online session, T5 sees the text "
+                "decoded in real time by the frozen seed decoder. FALCON H2 does not "
+                "use these blocks."
+            ),
+        },
+        "original_split": {
+            "held-in-calib": (
+                "In FALCON H2, this trial is calibration data released on DANDI, among "
+                "the first 60% of the day's seed or recalibration trials."
+            ),
+            "held-in-eval": (
+                "In FALCON H2, this trial is among the last 40% of the day's seed or "
+                "recalibration trials, withheld from DANDI to score submissions. Dryad "
+                "releases it."
+            ),
+            "held-out-calib": (
+                "In FALCON H2, this trial is one of the first 3 trials of a later day "
+                "that only DANDI releases. No source states its block kind, and the "
+                "Study labels it recalibration, as the FALCON converter does."
+            ),
+        },
+    }
     requirements: tp.ClassVar[tuple[str, ...]] = ("dandi", "h5py", "scipy")
 
     _info: tp.ClassVar[study.StudyInfo] = study.StudyInfo(

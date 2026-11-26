@@ -111,7 +111,7 @@ Total is 4.5 hours. Drag-and-drop rows are **stages**, not trials: session 1 hol
 - **Nothing is read eagerly.** A session's `feat` is up to 2.3 GB, so `utils` keeps the `h5py` handle open and slices it. Ask for one feature type or one bin range rather than the whole matrix.
 - **No dates and no trial days.** The source publishes neither, so `post_implant_day` is null for every session and neither subject carries a `time_since_implant`.
 - **The decode target is a gesture class**, so `decode_target` is `other` rather than `movement`, the same call as `vargas_2025`.
-- **Channel order is unverified** against the other T5 and T11 datasets, though the `Lateral` and `Medial` names give more to go on than most deposits. See the channel-mapping table in [standardization.md](../../../../docs/standardization.md).
+- **Channel order: array level stated, electrode level a candidate.** The `Lateral` and `Medial` labels fix the array of each column block. For T11, `karpowicz_2025` shares the array order across days, and electrode order within each array is a candidate. Columns 0-95 of the two T11 Gesture Hero sessions disagree in crossing rates with the drag-and-drop sessions and `karpowicz_2025`, for a reason not identified. See [t11.md](../../../../docs/channel_mapping/t11.md), and [t5.md](../../../../docs/channel_mapping/t5.md) for T5.
 
 ## Study, timelines and events
 

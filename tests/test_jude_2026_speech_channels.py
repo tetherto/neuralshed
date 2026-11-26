@@ -12,7 +12,7 @@ LATE = ("t17.2024.05.06", 1)
 
 
 def _drive():
-    if not utils.T17_DIR.exists():
+    if not utils.default_t17_dir().exists():
         pytest.skip(
             f"jude_2026_speech data not mounted at {dataset_dir('jude_2026_speech')}"
         )

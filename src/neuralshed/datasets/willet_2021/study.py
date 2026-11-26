@@ -103,6 +103,55 @@ class Willett2021Handwriting(NeuralshedStudy):
         "counts (192 ch, 100 Hz) with per-trial delay cues, go markers and the attempted "
         "character, line or sentence (Willett et al. 2021, Nature 593)."
     )
+    timeline_descriptions: tp.ClassVar[dict[str, dict[tp.Any, str]]] = {
+        "task": {
+            "singleLetters": (
+                "In the single characters task, a cued character appears next to a red "
+                "square during an instructed delay. The square turns green and T5 "
+                "attempts to write the character in a 1 s go period. There are 31 "
+                "classes: a-z, space, comma, apostrophe, period and question mark, with "
+                "10 repetitions each in most sessions. The pilot session has 27 "
+                "repetitions plus a rest condition."
+            ),
+            "straightLines": (
+                "In the straight lines task, T5 attempts single pen strokes in 16 "
+                "directions at three lengths, 24 repetitions each. Each stroke follows "
+                "an instructed delay and has a 1.5 s go period."
+            ),
+            "sentences": (
+                "In the sentences task, a prompt is shown during an instructed delay and "
+                "T5 then writes a sentence. T5 ends each trial with a head turn to the "
+                "right."
+            ),
+        },
+        "sentence_condition": {
+            "OL Copy": "In this block T5 copies the prompt with no real-time decoder.",
+            "OL Copy With Pauses": (
+                "In this block T5 copies the prompt with no real-time decoder, pausing "
+                "at its # marks."
+            ),
+            "OL Copy from Memory": (
+                "In this block T5 writes a short phrase from memory with no real-time "
+                "decoder."
+            ),
+            "CL Pandarinath": (
+                "In this block T5 copies 7 benchmark sentences from Pandarinath et al. "
+                "2017 with the real-time decoder."
+            ),
+            "CL Corpus": (
+                "In this block T5 copies sentences from the British National Corpus "
+                "with the real-time decoder."
+            ),
+            "CL Free Write": (
+                "In this block T5 answers question prompts freely with the real-time "
+                "decoder."
+            ),
+        },
+        "session": {
+            session: f"Session: {text}."
+            for session, text in utils.SESSION_DESCRIPTIONS.items()
+        },
+    }
     requirements: tp.ClassVar[tuple[str, ...]] = ("scipy",)
 
     _info: tp.ClassVar[study.StudyInfo] = study.StudyInfo(
@@ -179,9 +228,9 @@ class Willett2021Handwriting(NeuralshedStudy):
                         condition = condition_of[block]
                         timeline.update(
                             sentence_condition=condition,
-                            loop_type="closed"
-                            if condition.startswith("CL")
-                            else "open",
+                            loop_type=(
+                                "closed" if condition.startswith("CL") else "open"
+                            ),
                         )
                     yield timeline
 

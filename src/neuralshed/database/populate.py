@@ -408,7 +408,8 @@ def populate(
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument(
-        "--db", help="database URL (default: env DATABASE_URL or local SQLite)"
+        "--db",
+        help="database URL (default: env NEURALSHED_DATABASE_URL or local SQLite)",
     )
     p.add_argument(
         "--catalog-only", action="store_true", help="skip session-level population"

@@ -1,6 +1,6 @@
 # Onboarding a new dataset: the phase guide
 
-The end-to-end workflow for taking a dataset from the catalog ([datasets.md](datasets.md)) to ML-ready. Three phases, each ending in a status from the `datasets.md` legend. The `Study` class itself is covered in [writing_a_neuralfetch_study.md](writing_a_neuralfetch_study.md), this guide places it in context.
+The end-to-end workflow for taking a dataset from the catalog ([datasets.md](datasets.md)) to ML-ready. Three phases, each ending in a status from the `datasets.md` legend. The `Study` class itself is covered in [writing_a_study.md](writing_a_study.md), this guide places it in context.
 
 | Phase | Deliverables | End status |
 |---|---|---|
@@ -8,7 +8,7 @@ The end-to-end workflow for taking a dataset from the catalog ([datasets.md](dat
 | 2, Study composition | `study.py`, any new package-level Events/Extractors, `02_explore_study.ipynb` | `study_ready` |
 | 3, Utilization | `03_model_example.ipynb` | `ml_ready` |
 
-Everything for one dataset lives in `src/neuralshed/datasets/<name>/`, except reusable Events and Extractors (see Conventions). `<name>` is the first author's surname and the journal year of the published paper (`card_2024`), with a topic suffix when that author has more than one paper in the year (e.g.: `jude_2026_speech` and `jude_2026_typing`).
+Everything for one dataset lives in `src/neuralshed/datasets/<name>/`, except reusable Events and Extractors (see Conventions). `<name>` is the first author's surname and the journal year of the published paper (`card_2024`), with a topic suffix when that author has more than one paper in the year (e.g.: `jude_2026_speech` and `jude_2026_typing`), or with the paper's own name for the dataset as suffix when the paper releases several datasets (`karpowicz_2024_h1`).
 
 ---
 
@@ -21,7 +21,7 @@ Everything for one dataset lives in `src/neuralshed/datasets/<name>/`, except re
 - **Reference materials** live at `<NEURALSHED_DATA_ROOT>/<name>/references/`, typically these are the publication PDF and a clone of the authors' code repository.
 - **Generalizable code goes in package modules, not the dataset folder.** Reusable Events in `src/neuralshed/events.py`, Extractors in `src/neuralshed/extractors.py`, shared NWB access in `src/neuralshed/datasets/nwb.py`. Only dataset-specific helpers go in `datasets/<name>/utils.py`.
 - **Notebooks** are didactic walkthroughs, not code references. One statement per line, a short comment per code block.
-- **Every notebook starts by building the Study and calling `download()`.** The setup cell is `s = StudyClass(path=dataset_dir("<name>") / "data")` followed by `s.download()`, and later cells read source files through `s.path`. The public `download()` returns immediately once the success file exists, so the call costs nothing after the first run, and it is the same path the CLI uses. Never call the private `_download()`. Credentials come from the environment or a local `.env` file loaded with `python-dotenv`.
+- **Every notebook starts by building the Study and calling `download()`.** The setup cell is `s = StudyClass(path=dataset_dir("<name>") / "data")` followed by `s.download()`, and later cells read source files through `s.path`. The public `download()` returns immediately once the success file exists, so the call costs nothing after the first run, and it is the same path the CLI uses. Never call the private `_download()`. Before that, the setup cell calls `neuralshed.configure(env_file=ENV_FILE)`, where `ENV_FILE` is a relative path to the repo's `.env`, so the data root and credentials come from that file or the environment.
 - **README and notebook markdown.** No soft line breaks, no em-dashes and no semicolons inside sentences. Use commas or parentheses.
 - **Verify against real data files**, not only the paper. Units, shapes and timebase quirks are routinely undocumented or wrong.
 - **Concise comments and docstrings.**
@@ -51,7 +51,7 @@ Subject and implant metadata is a first-class deliverable. Record everything the
 - **Type selects the kind, attributes select the stream and the condition.** An extractor's `event_types` picks the kind of event, its `query` picks one stream among several of that kind (for example one band among overlapping `BandPower` events, by `feature`), and `Study.query` or a `trigger_query` picks timelines and trials by attribute. Give parallel streams of one type a distinct `feature`, and use a thin subclass when two streams must be selectable by type alone.
 - **Emit the attributes relevant for filtering.** Beyond `type`, `start` and `duration` an event carries any column you attach (`code`, `description`, `task_condition`, `original_split`, `success`, ...). Decide up front which conditions a model might train on or hold out, and attach a column for each. Preserve the source's own labels, such as its published split and its trial outcomes. An attribute you do not emit cannot be selected later. Shared names are listed in [standardization.md](standardization.md).
 
-**2.2 Write `study.py`.** Subclass `NeuralshedStudy` and follow [writing_a_neuralfetch_study.md](writing_a_neuralfetch_study.md) for the contract. Decide what one timeline is (session, block or trial, whichever is the largest span the source delivers on a single continuous timebase) and which whole-timeline labels ride on the timeline dict.
+**2.2 Write `study.py`.** Subclass `NeuralshedStudy` and follow [writing_a_study.md](writing_a_study.md) for the contract. Decide what one timeline is (session, block or trial, whichever is the largest span the source delivers on a single continuous timebase) and which whole-timeline labels ride on the timeline dict.
 
 **2.3 Write or extend Events and Extractors in package modules.** New reusable Events go in `events.py`, new Extractors in `extractors.py`. Import the event types you emit in `study.py` (`# noqa: F401`) so they register. Prefer the existing `NeuralFeatureExtractor` and `BehavioralSeriesExtractor` over a new one.
 
@@ -64,11 +64,11 @@ python -m neuralshed.database.validate --check-sessions --datasets <name>
 
 The second command asserts that the Study's timeline sessions are a subset of `metadata.sessions()`. It reports skipped, not passed, when the data is not reachable.
 
-**2.5 Write `02_explore_study.ipynb`.** Build the Study on a small `query`, show the standardized events table, then read each event type through its extractor to confirm shapes, units and timing against the source. Exercise every event family the Study emits, and sample distinct recording conditions where the processing differs. After the events table, open it in `viz.explore_events(events)` so a reader can click through the timelines and see each event's payload (see [10_visualization.ipynb](tutorials/10_visualization.ipynb)). Execute clean.
+**2.5 Write `02_explore_study.ipynb`.** Build the Study on a small `query`, show the standardized events table, then read each event type through its extractor to confirm shapes, units and timing against the source. Exercise every event family the Study emits, and sample distinct recording conditions where the processing differs. After the events table, open it in `viz.explore_events(events)` so a reader can click through the timelines and see each event's payload (see [10_visualization.ipynb](tutorials/10_visualization.ipynb)). Read its Timeline tab for one timeline of each task and condition. Execute clean.
 
 **2.6 Lock the `StudyInfo` guard.** Every Study ships a filled `_info` computed from the real data, with a `query` that exercises every emission path. The recipe is in section 11 of the study guide. A missing or empty `StudyInfo()` does not count as `study_ready`.
 
-**2.7 Review before declaring `study_ready`.** Check that processing and referencing are stated per block kind rather than assumed constant, that sign and axis conventions were verified against the data rather than the paper, that timed-out or failed trials carry an attribute rather than being dropped or passed off as successes, that blocks with known-bad recordings carry `valid=False` and a `valid_description` rather than being dropped or silently repaired, and that the timeline dict holds no plumbing keys.
+**2.7 Review before declaring `study_ready`.** Check that processing and referencing are stated per block kind rather than assumed constant, that sign and axis conventions were verified against the data rather than the paper, that timed-out or failed trials carry an attribute rather than being dropped or passed off as successes, that blocks with known-bad recordings carry `valid=False` and a `valid_description` rather than being dropped or silently repaired, that the timeline dict holds no plumbing keys, and that `timeline_descriptions` describes only values the Study emits, in sentences that agree with the README.
 
 ---
 
@@ -82,7 +82,7 @@ The second command asserts that the Study's timeline sessions are a subset of `m
 
 ## README.md organization
 
-Section skeleton (see `datasets/fan_h1/README.md` for a worked example):
+Section skeleton (see `datasets/card_2024/README.md` for a worked example):
 
 1. **Title**, `<Dataset>: <one-line task description>`.
 2. **References**, publication(s), source archive and API, benchmark or code repository.
@@ -129,7 +129,8 @@ src/neuralshed/datasets/<name>/
 ├─ README.md
 ├─ 01_explore_source_data.ipynb
 ├─ 02_explore_study.ipynb
-└─ 03_model_example.ipynb
+├─ 03_model_example.ipynb
+└─ assets/                         # optional: cue_phonemes.json, figures the README embeds
 ```
 
 Reusable, cross-dataset code lives outside this folder:

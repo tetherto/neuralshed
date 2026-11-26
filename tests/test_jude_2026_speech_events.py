@@ -18,7 +18,7 @@ PHASED = ("t17.2024.05.23", 1)
 
 
 def _drive():
-    if not utils.T17_DIR.exists():
+    if not utils.default_t17_dir().exists():
         pytest.skip(
             f"jude_2026_speech data not mounted at {dataset_dir('jude_2026_speech')}"
         )
@@ -60,6 +60,25 @@ def test_task_family_helpers():
 def test_post_implant_day_from_the_registry():
     assert utils.post_implant_day("t17.2024.03.25") == 25
     assert utils.post_implant_day("t17.2024.08.13") == 166
+
+
+@pytest.mark.parametrize("extra", [False, True])
+def test_download_lifts_t17_out_of_the_zip_folder(tmp_path, monkeypatch, extra):
+    from neuralshed.datasets.dryad import Dryad
+    from neuralshed.datasets.jude_2026_speech.study import Jude2026IntendedSpeech
+
+    study = Jude2026IntendedSpeech(path=tmp_path)
+
+    def fake_download(self, overwrite=False):
+        (study.path / "Data" / "t17" / "t17.2024.03.25").mkdir(parents=True)
+        if extra:
+            (study.path / "Data" / "notes.txt").write_text("not ours")
+
+    monkeypatch.setattr(Dryad, "download", fake_download)
+    study._download(overwrite=True)
+    assert (study.path / "t17" / "t17.2024.03.25").is_dir()
+    # Data/ goes only when the move leaves it empty
+    assert (study.path / "Data").exists() == extra
 
 
 @pytest.fixture(scope="module")

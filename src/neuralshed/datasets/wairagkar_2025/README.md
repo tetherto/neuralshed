@@ -2,7 +2,7 @@
 
 Intracortical brain-to-voice speech neuroprosthesis in one BrainGate2 participant (**T15**, a 45-year-old left-handed man with ALS and severe dysarthria). Four 64-channel Utah arrays (256 electrodes) in the left precentral gyrus record 10 ms-binned spike-band power and threshold crossings while he attempts to speak cued sentences at his own pace. A causal decoder maps the neural features to 20-dimensional LPCNet acoustic features that a vocoder turns into a synthesized voice with about 8.5 ms of latency. Because T15 cannot produce intelligible speech, the training target is a text-to-speech rendering of the cue, time-aligned to his attempt.
 
-**Working dataset = `t15_neural_data`** (37 sessions, 8,489 trials, open vocabulary, 10 ms-binned neural features plus the time-aligned LPCNet target and word timings). Same participant **T15** and the same four arrays as [`card_2024`](../card_2024/README.md) (brain-to-text) and the T15 part of [`kunz_2025`](../kunz_2025/README.md). 4,925 trials are also in `card_2024` (see [Trials shared with `card_2024`](#trials-shared-with-card_2024)). The 50-word `t15_control_experiment` release is secondary, see [Notes / Scope](#notes--scope).
+**Working dataset = `t15_neural_data`** (37 sessions, 8,489 trials, open vocabulary, 10 ms-binned neural features plus the time-aligned LPCNet target and word timings). Same participant **T15** and the same four arrays as [`card_2024`](../card_2024/README.md) (brain-to-text) and the T15 part of [`kunz_2025`](../kunz_2025/README.md). Most of its trials on the 25 dates it shares with `card_2024` are also in that release (see [Trials shared with `card_2024`](#trials-shared-with-card_2024)). The 50-word `t15_control_experiment` release is secondary, see [Notes / Scope](#notes--scope).
 
 ## References
 
@@ -14,7 +14,7 @@ Intracortical brain-to-voice speech neuroprosthesis in one BrainGate2 participan
 
 - Human. Single BrainGate2 clinical-trial participant **T15**, registered as `braingate2/T15` in `datasets/participants.py`: 45-year-old left-handed man with amyotrophic lateral sclerosis (ALS), no functional use of the limbs, mixed upper- and lower-motor-neuron dysarthria, ALSFRS-R 23. He could vocalize but not produce intelligible speech, and spoke slowly, one word at a time. Data are de-identified.
 - **Implant:** four 64-electrode Utah arrays (**256 electrodes total**) in the **left precentral gyrus**, implanted `2023-07-17` (implant date in the participant registry, data collection starts 25 days later). Placement was targeted from pre-operative scans with the Human Connectome Project parcellation: ventral 6v, area 4 (primary motor cortex), area 55b and dorsal 6v. The arrays are named `ventral_6v`, `4`, `55b`, `dorsal_6v`, the same names, labels, ontology ids and MNI centers as `card_2024`, which documents the same implant. The source files and the paper call them `v6v`, `M1`, `55b`, `d6v`.
-- **Channel order.** The 256-wide channel axis is ordered by array: `ventral_6v, 4, 55b, dorsal_6v` (64 each). Block `i` of 64 channels is the same array in `card_2024` and `kunz_2025`, but no source states an electrode-level mapping, and the streams are binned differently (100 Hz here, 50 Hz in `card_2024`). The source's 512-wide decoder input is `[spike-band power | threshold crossings]`, the reverse of `card_2024`'s, and `aggregation="cat"` follows event order, so pooled reads of the two datasets do not line up channel for channel.
+- **Channel order.** The 256-wide channel axis is ordered by array: `ventral_6v, 4, 55b, dorsal_6v` (64 each). Block `i` of 64 channels is the same array in `card_2024` and `kunz_2025`, but no source states an electrode-level mapping, and the streams are binned differently (100 Hz here, 50 Hz in `card_2024`). The source's 512-wide decoder input is `[spike-band power | threshold crossings]`, the reverse of `card_2024`'s, and `aggregation="cat"` follows event order, so pooled reads of the two datasets do not line up channel for channel. Trials released in both this dataset and `card_2024` confirm that column `i` is the same electrode on the 25 days they share, see [T15 channel correspondence](../../../../docs/channel_mapping/t15.md).
 
 ## Behavioral Task
 
@@ -25,7 +25,7 @@ Cued-speech task. Each trial starts with a **delay** period (1.5-4 s, red square
 | `trial_description` | trials | `original_split` | meaning |
 |---|---|---|---|
 | `Training data` | 6,502 | `train` | open-vocabulary cues used to train the decoders |
-| `Training data (50-word vocab)` | 771 | `train` | closed-vocabulary cues, mostly the first sessions |
+| `Training data (50-word vocab)` | 771 | `train` | closed-vocabulary cues, days 25, 193 and 195 |
 | `Evaluation trial` | 964 | `eval` | closed-loop trials in the 9 evaluation sessions |
 | `Evaluation trial (preliminary)` | 110 | `eval` | the first evaluation session, day 110 |
 | `Evaluation trial (mimed speech)` | 59 | `eval` | silent articulation without vocalizing |
@@ -58,7 +58,7 @@ Per-session MATLAB 5 `.mat` files (`scipy.io.loadmat`).
 <NEURALSHED_DATA_ROOT>/wairagkar_2025/
 ├── data/Wairagkar2025Brain2Voice/                # <- the Study path
 │   ├── README.md                                 Dryad README
-│   ├── t15_neural_data/                          # <- utils.DEFAULT_DATA_DIR, 30 GB
+│   ├── t15_neural_data/                          # <- utils.default_data_dir(), 30 GB
 │   │   ├── t15_neural_data_readme.txt
 │   │   ├── test_idx.mat                          listener-test trial indices
 │   │   └── t15_dayNNN/                           37 session folders
@@ -88,6 +88,7 @@ Per-session MATLAB 5 `.mat` files (`scipy.io.loadmat`).
 | `trial_description` | the source's verbatim label, one of the seven values above |
 | `task_condition` | `attempted`, or `mimed` on the 59 mimed trials |
 | `benchmark` | `random`, `video` or empty, see below |
+| `loop_type` | `closed` on post-implant days 67-195, where voice synthesis, text decoding or both ran closed-loop (paper Methods). Unset on days 25-48 |
 | `trial_id` | position in the session file, unique within a session |
 
 Per timeline:
@@ -107,11 +108,11 @@ Both neural rows carry `normalization="z_scored"` and a `processing` string with
 
 ### Trials shared with `card_2024`
 
-[`card_2024`](../card_2024/README.md) releases many of the same T15 trials, binned at 20 ms and z-scored over the preceding 20 trials. The two releases share 25 session dates (days 25-165, 2023-08-11 to 2023-12-29). On those days 4,925 trials here are the same recording as a `card_2024` trial: 4,551 `Training data`, 279 `Training data (50-word vocab)` and 95 `Evaluation trial (preliminary)`. Each pair has the same cue, and its threshold crossings, rebinned to 20 ms, correlate at 0.81-0.90 over time and channels with the `card_2024` clip, against at most 0.2 for every other trial of the day. The clip here starts 0.96-0.98 s after the `card_2024` clip and ends 0.05-0.15 s before it (5th-95th percentile). On the shared days, 873 trials here and 1,650 there have no counterpart, and the other 12 sessions here and 20 there are not shared.
+[`card_2024`](../card_2024/README.md) releases many of the same T15 trials, binned at 20 ms and z-scored over the preceding 20 trials. The two releases share 25 session dates (days 25-165, 2023-08-11 to 2023-12-29). On those days most of the 5,798 trials here (about 97%) are the same recording as a `card_2024` trial, from `Training data`, `Training data (50-word vocab)` and `Evaluation trial (preliminary)`. The pairs were found from the neural data alone. At the pair's offset, the median correlation of each column, rebinned to 20 ms, with the same column of the `card_2024` clip is about 0.5-0.6 for threshold crossings and about 0.5-0.65 for spike-band power, against about 0.1 and 0.2 at most for any other trial of the day. Every pair whose sentence both releases show has the same cue. The clip here starts at the go cue, about 1 s after the `card_2024` clip, and at the same moment on the first trial of a `card_2024` block. About 200 trials here and about 1,000 there have no counterpart, and the other 12 sessions here and 20 there are not shared.
 
-- A collection that pools the two datasets holds these trials twice. Keep one copy of each pair, or assign both copies to the same split.
-- All 95 trials of day 110, the first evaluation session and part of `original_split == "eval"`, are `train` (80) and `val` (15) trials of `card_2024`. The other 8 evaluation sessions are not in `card_2024`.
-- 68 trials here are `test` trials of `card_2024`, whose sentences that release withholds.
+- A collection that pools the two datasets holds these trials twice. Keep one copy of each pair, or assign both copies to the same split. [t15_repeated_trials.md](../../../../docs/channel_mapping/t15_repeated_trials.md) describes how to find the pairs.
+- All trials of day 110, the first evaluation session and part of `original_split == "eval"`, are trials of `card_2024`, mostly `train` with some `val` and `test`. The other 8 evaluation sessions are not in `card_2024`.
+- Several hundred trials here are `test` trials of `card_2024`, whose sentences that release withholds.
 
 ## Notes / Scope
 
@@ -124,7 +125,7 @@ Both neural rows carry `normalization="z_scored"` and a `processing` string with
 - **Chronology.** The paper's decoders trained on every session before each evaluation day. `AssignSourceSplit(mapping={"train": "train", "eval": "val"})` honours the source partition.
 - **Not emitted.** The closed-loop synthesized audio and the per-session `.h5` decoders are the online system's output, reachable through `utils.get_pred_audio` and `SessionRef.decoder_path`. The `t15_control_experiment` release is a single session (`t15_day482`, 10 blocks of 24 trials, 50-word vocabulary) that adds a stethoscopic microphone (30 kHz) and a 6-axis IMU (300 Hz) but ships no LPCNet target.
 
-## Files in this folder
+## Files
 
 - `__init__.py`: package marker.
 - `metadata.py`: catalog `DATASET_METADATA` (participant, arrays with MNI coordinates, brain-area ontology ids, events) + `sessions()` + `get_metadata()`.

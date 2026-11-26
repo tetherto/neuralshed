@@ -79,8 +79,8 @@ _PROCESSING = {
         "reference-block data; crossings counted per 10 ms bin"
     ),
     "spike_band_power": (
-        f"{_FILTER}; sum of squared voltages per 10 ms bin (the deposit README says "
-        "mean); values capped at 50,000 uV^2"
+        f"{_FILTER}; mean of squared voltages per 10 ms bin; "
+        "values capped at 50,000 uV^2"
     ),
 }
 
@@ -90,6 +90,20 @@ _UNIT_TYPES = {
     "sentence": "Sentence",
     "orofacial": "Action",
 }
+
+
+# Shared parts of the task_family sentences in timeline_descriptions.
+_SENTENCES = "In this block T17 is cued with sentences and attempts to say each one."
+_OPEN_LOOP = "No decoded output is given back (open loop)."
+_CLOSED_LOOP = (
+    "After each trial the online decoder, a recurrent network with a 5-gram language "
+    "model, gives back the decoded sentence as synthesized speech, in gaps of 2-40 s "
+    "between trials (closed loop)."
+)
+_PHASED = (
+    "In this block of the phased task each trial shows a cue that T17 first reads, then "
+    "says internally (covert speech), then attempts to say, in three phases of {}."
+)
 
 
 def _unit_type(task_family: str) -> str:
@@ -148,6 +162,56 @@ class Jude2026IntendedSpeech(NeuralshedStudy):
         "phased read/internal/attempted-speech task. 14 sessions, 121 task blocks "
         "(Jude et al. 2026, Cell Reports 45, 117162)."
     )
+    timeline_descriptions: tp.ClassVar[dict[str, dict[tp.Any, str]]] = {
+        "task_family": {
+            "phoneme": (
+                "In this block T17 attempts isolated phonemes after a 2.5 s instructed "
+                "delay. Each of 40 cues, 39 phonemes and a rest cue, appears twice per "
+                'block. Consonants are cued as a syllable with AA ("Bah") and vowels '
+                'inside a carrier word with the vowel in capitals ("thOUGHt").'
+            ),
+            "orofacial": (
+                "In this block T17 attempts isolated orofacial movements after a 2.5 s "
+                "instructed delay. Each of 17 cues appears twice per block: 12 movements "
+                'such as "Clench jaw", four syllables ("Say Dah", "Say Fah", "Say Jah", '
+                '"Say Yah") and a rest cue.'
+            ),
+            "word": (
+                "In this block T17 attempts single words after a 2.5 s instructed delay, "
+                "each word of the 50-word vocabulary once."
+            ),
+            "sentence_50w_ol": (
+                f"{_SENTENCES} The sentences use the 50-word vocabulary. {_OPEN_LOOP}"
+            ),
+            "sentence_50w_cl": (
+                f"{_SENTENCES} The sentences use the 50-word vocabulary. {_CLOSED_LOOP}"
+            ),
+            "sentence_125k_ol": (
+                f"{_SENTENCES} The sentences use a 125,000-word vocabulary. {_OPEN_LOOP}"
+            ),
+            "sentence_125k_cl": (
+                f"{_SENTENCES} The sentences use a 125,000-word vocabulary. "
+                f"{_CLOSED_LOOP}"
+            ),
+            "phased_phoneme": (
+                f"{_PHASED.format('2.5 s each')} The cues are ten syllables such as "
+                '"Dah", "Ah" and "Oy", five times each.'
+            ),
+            "phased_word": (
+                f"{_PHASED.format('4 s each')} The cues are ten words, eight from the "
+                '50-word vocabulary and the nonsense words "Cheldgup" and "Zelwog", '
+                "five times each."
+            ),
+            "phased_short_sentence": (
+                f"{_PHASED.format('8 s each, except a read phase of about 4 s in block 6')} The cues are ten short sentences built from "
+                "the 50-word vocabulary, five times each. Block 6 repeats block 3."
+            ),
+            "phased_sentence": (
+                f"{_PHASED.format('12 s each')} The cues are ten unrestricted sentences, "
+                "five times each."
+            ),
+        },
+    }
     requirements: tp.ClassVar[tuple[str, ...]] = ("scipy",)
 
     _info: tp.ClassVar[study.StudyInfo] = study.StudyInfo(
@@ -174,6 +238,18 @@ class Jude2026IntendedSpeech(NeuralshedStudy):
     )
 
     # -- data access ------------------------------------------------------
+    def _lift_t17(self) -> None:
+        """Move ``Data/t17/`` up to ``t17/``, where the reader looks.
+
+        ``Data.zip`` unpacks with a top-level ``Data/`` folder. ``Data/`` is removed
+        once empty; one holding anything else is left alone.
+        """
+        nested = self.path / "Data"
+        if (nested / "t17").is_dir() and not self._t17.exists():
+            (nested / "t17").rename(self._t17)
+            if not any(nested.iterdir()):
+                nested.rmdir()
+
     def _download(self, overwrite: bool = False) -> None:
         """Fetch the Dryad deposit (``Data.zip`` -> ``t17/``, ``README.md``) into ``self.path``.
 
@@ -194,6 +270,7 @@ class Jude2026IntendedSpeech(NeuralshedStudy):
             include=list(utils.DRYAD_FILES),
         )
         if not overwrite:
+            self._lift_t17()  # a tree unpacked by an earlier download
             digest = latest_files(utils.DRYAD_DOI).get("README.md", (0, ""))[1]
             problems = utils.verify_tree(self.path, readme_digest=digest)
             if not problems:
@@ -206,6 +283,7 @@ class Jude2026IntendedSpeech(NeuralshedStudy):
                 return
             print("jude_2026_speech tree incomplete, fetching:", *problems, sep="\n  ")
         dryad.download(overwrite=overwrite)
+        self._lift_t17()
 
     @property
     def _t17(self):

@@ -60,6 +60,7 @@ from .study import (
 
 _BIN_SIZE_S = utils.NEURAL_BIN_SIZE_MS / 1000  # 0.01 s
 _PARTICIPANT_ID = "braingate2/T15"  # datasets/participants.py
+_POINTER_FILE = "DATA_LOCATION.txt"  # left in this study's folder by _download
 
 
 class Wairagkar2025ControlExperiment(NeuralshedStudy):
@@ -110,6 +111,15 @@ class Wairagkar2025ControlExperiment(NeuralshedStudy):
         # ``path`` points at this study's class-name folder; the download
         # belongs to the main study folder next to it.
         Wairagkar2025Brain2Voice(path=self.path.parent).download(overwrite=overwrite)
+        # neuralset's download() rejects an empty study folder, and this one
+        # stays empty, so leave a note saying where the release landed.
+        release = (
+            self.path.parent / Wairagkar2025Brain2Voice.__name__ / utils.CONTROL_SUBDIR
+        )
+        (self.path / _POINTER_FILE).write_text(
+            "The control experiment release downloads with "
+            f"Wairagkar2025Brain2Voice, into:\n{release}\n"
+        )
 
     def _data_dir(self) -> Path:
         """Locate the block-file folder across the three layouts a caller may pass.

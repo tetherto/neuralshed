@@ -367,9 +367,9 @@ def test_every_declared_normalization_is_registered():
         for value in _declared_units(path, "normalization")
         if value not in units.NORMALIZATIONS
     }
-    assert (
-        not unknown
-    ), "normalization values not in neuralshed.units: " + ", ".join(sorted(unknown))
+    assert not unknown, "normalization values not in neuralshed.units: " + ", ".join(
+        sorted(unknown)
+    )
 
 
 def test_every_neural_stream_declares_a_normalization():

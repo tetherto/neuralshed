@@ -72,8 +72,8 @@ DATASET_METADATA = {
                 "with some differentiable vowels, no intelligible consonants or sentences",
                 "Partial use of the limbs, communicates through a writing board or tablet",
             ],
-            # Same implant, names and ontology ids as willet_2023, in this Study's column order
-            # (inferior array first in each pair). 46 of the 127 T12 timelines store only the
+            # Same implant, names, ontology ids and array order as willet_2023 (inferior array
+            # first in each pair). 46 of the 127 T12 timelines store only the
             # two 6v arrays (columns 0-127). The 81 seqRecall and December 2024 timelines store
             # all four. The December 2024 in-file labels (M1, 55b) are a relabel of the same
             # columns, see README.md, Channel layout.
@@ -331,8 +331,9 @@ DATASET_METADATA = {
             # the two 55b arrays (256 columns), so the two hand-knob 6d arrays are not listed.
             # Names and region strings follow jude_2026_speech. The files label columns
             # 128-255 as one `55b` group. Channel correlations split it at column 192, and the
-            # ventral-then-dorsal order of the two halves is assumed from jude_2026_speech's
-            # order, not published. The paper found no speech decoding and very little spiking
+            # ventral-then-dorsal order of the two halves follows jude_2026_speech, is not
+            # published, and is a candidate supported by channel correlations
+            # (docs/channel_mapping/t17.md). The paper found no speech decoding and very little spiking
             # on the two 55b arrays and excluded them (Figure 1C).
             "arrays": [
                 {

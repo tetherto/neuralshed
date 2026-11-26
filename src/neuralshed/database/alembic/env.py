@@ -1,8 +1,9 @@
 """Alembic migration environment for the neuralshed metadata database.
 
 Wired to the project schema (``neuralshed.database.schema.Base.metadata``) and
-the same ``DATABASE_URL`` resolution as the app (``neuralshed.database.db``), so
-``alembic upgrade head`` builds/evolves the exact schema on SQLite or Postgres.
+the same ``NEURALSHED_DATABASE_URL`` resolution as the app
+(``neuralshed.database.db``), so ``alembic upgrade head`` builds/evolves the exact
+schema on SQLite or Postgres.
 """
 
 import sys
@@ -21,7 +22,7 @@ from neuralshed.database import db as _db  # noqa: E402
 from neuralshed.database.schema import Base  # noqa: E402
 
 config = context.config
-# Resolve the URL the same way the app does (env DATABASE_URL or SQLite default).
+# Resolve the URL the same way the app does (env var or SQLite default).
 config.set_main_option("sqlalchemy.url", _db.database_url())
 
 if config.config_file_name is not None:

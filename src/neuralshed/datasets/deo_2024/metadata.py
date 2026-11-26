@@ -4,8 +4,8 @@ DATASET_METADATA = {
     "description": "Delayed bimanual and unimanual control of two on-screen cursors by "
     "BrainGate2 participant T5 (C4 spinal cord injury, tetraplegia). On each trial one of "
     "three movement types is cued (unimanual right, unimanual left, or bimanual), with a "
-    "1-2 s instructed delay before a GO cue. Data span open-loop instructed-delay blocks "
-    "(cursors move autonomously) and real-time closed-loop blocks where RNN or linear "
+    "0.96-2.96 s instructed delay before a GO cue. Data span open-loop instructed-delay "
+    "blocks (cursors move autonomously) and real-time closed-loop blocks where RNN or linear "
     "decoders drive the two cursors from neural activity. Neural features are 20 ms-binned "
     "threshold crossings from two 96-channel Utah arrays (192 channels) in hand-knob motor "
     "cortex (left precentral gyrus). Behavioral streams are the two cursors' and targets' "
@@ -16,13 +16,14 @@ DATASET_METADATA = {
     "status": "ml_ready",
     "macro_task": "human_motor",
     "decode_target": "movement",
-    "study_class": "Deo2024Bimanual",  # datasets/deo_2024/study.py (Phase 2, tentative)
+    "study_class": "Deo2024Bimanual",  # datasets/deo_2024/study.py
     "bibtex": """
 @article{deo2024bimanual,
   title = {Brain control of bimanual movement enabled by recurrent neural networks},
   author = {Deo, Darrel R. and Willett, Francis R. and Avansino, Donald T. and Hochberg, Leigh R. and Henderson, Jaimie M. and Shenoy, Krishna V.},
   journal = {Scientific Reports},
   volume = {14},
+  pages = {1598},
   year = {2024},
   month = jan,
   doi = {10.1038/s41598-024-51617-3},
@@ -32,7 +33,7 @@ DATASET_METADATA = {
     "publication_doi": "10.1038/s41598-024-51617-3",
     "code_repo": "https://github.com/d-r-deo/bimanualBCI",
     "licence": "CC0-1.0",
-    "notes": "13 experiment days (2021-06-02..2021-10-13), one .mat per day, ~135 MB total. "
+    "notes": "13 experiment days (2021-06-02..2021-10-13), one .mat per day, ~139 MB total. "
     "Each day is a whole-day concatenated stream of 20 ms / 50 Hz binned threshold crossings "
     "(uint8, -3.5xRMS) with recording gaps at block changes (blockNum marks the active block "
     "per bin). Threshold crossings only, no spike-band power. Two 96-channel Utah arrays (192 "
@@ -103,7 +104,9 @@ DATASET_METADATA = {
             "dtype": "uint8",
             "description": "Binned threshold-crossing counts (-3.5xRMS), 192 channels, 20 ms "
             "bins. Whole-day stream (tx, (192, T) in source); recording gaps occur at block "
-            "changes. Raw counts, not z-scored.",
+            "changes. Raw counts, not z-scored. The saved array dtype is uint8, while "
+            "the declared MATLAB class is double. The Study emits float32 streams "
+            "without changing the count values.",
         },
         {
             "name": "cursor_position",
@@ -135,18 +138,37 @@ DATASET_METADATA = {
             "name": "movement_type",
             "category": "categorical",
             "event_class": "Stimulus",
-            "task_condition": "attempted",
-            "description": "Per-trial cued movement type: unimanual right (UniR), unimanual "
-            "left (UniL), or bimanual (Bi). One event per trial over the delay-to-move span.",
+            "task_condition": "na",
+            "description": "Per-trial visual movement cue: unimanual right (UniR), unimanual "
+            "left (UniL), or bimanual (Bi). Spans the released delay up to goCue, with period='delay'.",
+        },
+        {
+            "name": "cue_go",
+            "category": "categorical",
+            "event_class": "Stimulus",
+            "task_condition": "na",
+            "description": "One-bin audio go marker at goCue (stimulus_kind movement_go_cue, "
+            "period='go'). Its 20 ms span marks onset, not the measured beep duration.",
         },
         {
             "name": "movement_epoch",
             "category": "categorical",
             "event_class": "Action",
             "task_condition": "attempted",
-            "description": "Per-trial motor epochs from the trial timing (durationBinnedDelay "
-            "preparatory period before the GO cue, durationBinnedMove move period after it). "
-            "Marks the delay vs move phases around each goCue.",
+            "description": "Attempted movement from goCue for durationBinnedMove bins, "
+            "with period='go'. The released movement window is preserved. "
+            "Carries the declared trial mix and the movement strategy where specified. "
+            "On closed and assisted trials, success is derived from "
+            "durationBinnedMove: False at the 499-bin timeout, True otherwise.",
+        },
+        {
+            "name": "intertrial",
+            "category": "categorical",
+            "event_class": "Intertrial",
+            "task_condition": "na",
+            "description": "Gap from a released movement end to the next trial's preparation "
+            "start in the same block, with period='intertrial'. This does not imply rest. "
+            "Block lead-ins and tails remain unlabelled.",
         },
     ],
     "quality_flags": [
@@ -159,7 +181,7 @@ DATASET_METADATA = {
             "kind": "loop_type_from_readme",
             "description": "Open-loop (OL) vs closed-loop (CL) vs closed-loop recalibration (CLR) "
             "is a per-block property present only in readme.txt, transcribed to utils.SESSION_BLOCKS; "
-            "the .mat carries no loop-type field. Unlisted blocks resolve to 'unknown'.",
+            "the .mat carries no loop-type field. All 204 released blocks are classified.",
         },
         {
             "kind": "closed_loop_cursor",

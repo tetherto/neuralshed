@@ -20,7 +20,7 @@ COPIED_BAND_POWER = (
 
 
 def _drive():
-    if not utils.DATA_DIR.exists():
+    if not utils.default_data_dir().exists():
         pytest.skip(f"kunz_2025 data not mounted at {dataset_dir('kunz_2025')}")
 
 
@@ -38,19 +38,19 @@ def test_stored_width_matches_the_declared_layout():
         widths[p.name] = utils.n_channels(p)
     assert sum(w == 128 for w in widths.values()) == 5
     assert sum(w == 256 for w in widths.values()) == 36
-    seq = utils.DATA_DIR / UINT8_TAGGED[2]
+    seq = utils.default_data_dir() / UINT8_TAGGED[2]
     assert utils.array_names(seq) == [
         "ventral_6v",
         "dorsal_6v",
         "ventral_44",
         "dorsal_44",
     ]
-    assert utils.array_names(utils.DATA_DIR / COPIED_BAND_POWER) == [
+    assert utils.array_names(utils.default_data_dir() / COPIED_BAND_POWER) == [
         "ventral_6v",
         "dorsal_6v",
     ]
     t17 = (
-        utils.DATA_DIR
+        utils.default_data_dir()
         / "interleavedVerbalBehaviors/t17.2024.12.09_interleavedVerbalBehaviors_raw.mat"
     )
     assert [(n, sl.start) for n, sl in utils.array_layout(t17)] == [
@@ -71,7 +71,7 @@ def test_stored_width_matches_the_declared_layout():
 )
 def test_read_shape_equals_stored_width(rel):
     _drive()
-    p = utils.DATA_DIR / rel
+    p = utils.default_data_dir() / rel
     tx = utils.get_neural_stream(p, "threshold_crossings")
     assert tx.shape == (utils.n_channels(p), utils.n_bins(p))
 
@@ -79,7 +79,7 @@ def test_read_shape_equals_stored_width(rel):
 @pytest.mark.parametrize("rel", UINT8_TAGGED)
 def test_uint8_tagged_counts_are_read_as_signed(rel):
     _drive()
-    p = utils.DATA_DIR / rel
+    p = utils.default_data_dir() / rel
     assert utils.stored_dtype(p, "binnedTX") == "uint8"
     assert utils.reinterpreted_uint8(p)
     raw = sio.loadmat(str(p), variable_names=["binnedTX"])["binnedTX"]
@@ -90,7 +90,7 @@ def test_uint8_tagged_counts_are_read_as_signed(rel):
 
 def test_raw_files_are_not_reinterpreted():
     _drive()
-    p = utils.DATA_DIR / COPIED_BAND_POWER
+    p = utils.default_data_dir() / COPIED_BAND_POWER
     assert utils.stored_dtype(p, "binnedTX") == "uint8"
     assert not utils.reinterpreted_uint8(p)
     tx = utils.get_neural_stream(p, "threshold_crossings")
@@ -99,7 +99,7 @@ def test_raw_files_are_not_reinterpreted():
 
 def test_copied_band_power_is_flagged():
     _drive()
-    p = utils.DATA_DIR / COPIED_BAND_POWER
+    p = utils.default_data_dir() / COPIED_BAND_POWER
     assert utils.band_power_invalid_reason(p)
     tx = sio.loadmat(str(p), variable_names=["binnedTX"])["binnedTX"]
     sp = sio.loadmat(str(p), variable_names=["spikePow"])["spikePow"]
@@ -160,7 +160,7 @@ def test_per_behavior_files_duplicate_the_combined_blocks():
     """Each of the 28 per-behavior files holds some blocks of its ``*_allBehaviors`` file,
     with the same trials (behavior from the file name) and the same feature matrices."""
     _drive()
-    folder = utils.DATA_DIR / "isolatedVerbalBehaviors"
+    folder = utils.default_data_dir() / "isolatedVerbalBehaviors"
     subsets = [p for p in utils.list_mat_files(folder) if "allBehaviors" not in p.name]
     assert len(subsets) == 28
     columns = ["word", "behavior", "passive", "delay", "go", "go_stop"]
@@ -197,7 +197,7 @@ def test_per_behavior_files_duplicate_the_combined_blocks():
 def test_recovered_t16_blocks_are_separately_centred():
     _drive()
     p = (
-        utils.DATA_DIR
+        utils.default_data_dir()
         / "seqRecallVerbalMemory/t16.2024.07.17_binnedTX_spikePow_20ms_verbal.mat"
     )
     segs = utils.block_segments(p)
@@ -213,7 +213,7 @@ def test_recovered_t16_blocks_are_separately_centred():
 
 def test_labels_follow_the_source_conditions():
     _drive()
-    t12 = utils.get_trials(utils.DATA_DIR / COPIED_BAND_POWER)
+    t12 = utils.get_trials(utils.default_data_dir() / COPIED_BAND_POWER)
     assert t12.behavior.value_counts().to_dict() == {
         "attempted": 140,
         "imagined_motor": 140,
@@ -222,7 +222,7 @@ def test_labels_follow_the_source_conditions():
     }
     assert set(t12[t12.behavior == "listening"].text_modality) == {"heard"}
     verbal = utils.get_trials(
-        utils.DATA_DIR
+        utils.default_data_dir()
         / "seqRecallVerbalMemory/t12.2023.09.28_binnedTX_spikePow_20ms_arrow.mat"
     )
     assert int(verbal.rest.sum()) == 20
@@ -230,7 +230,8 @@ def test_labels_follow_the_source_conditions():
     assert set(verbal[verbal.rest].cue_id) == {0}
     assert set(verbal[~verbal.rest].task_condition) == {"attempted"}
     t16 = utils.get_trials(
-        utils.DATA_DIR / "isolatedVerbalBehaviors/t16.2024.03.04_allBehaviors_raw.mat"
+        utils.default_data_dir()
+        / "isolatedVerbalBehaviors/t16.2024.03.04_allBehaviors_raw.mat"
     )
     stub = t16[t16.passive].go_stop_bin - t16[t16.passive].go_start_bin
     assert stub.value_counts().to_dict() == {1: 252, 2: 28}
@@ -275,7 +276,8 @@ def test_passive_blocks_and_sequence_actions():
     _drive()
     for name, n_passive in (("t12.2023.08.15", 336), ("t16.2024.03.04", 280)):
         trials = utils.get_trials(
-            utils.DATA_DIR / f"isolatedVerbalBehaviors/{name}_allBehaviors_raw.mat"
+            utils.default_data_dir()
+            / f"isolatedVerbalBehaviors/{name}_allBehaviors_raw.mat"
         )
         passive = trials[trials.passive]
         assert len(passive) == n_passive
@@ -287,14 +289,16 @@ def test_passive_blocks_and_sequence_actions():
         "seqRecallSpeech/t16.2024.07.17_binnedTX_spikePow_20ms.mat": "speech",
     }
     for rel, kind in kinds.items():
-        assert set(utils.get_trials(utils.DATA_DIR / rel).action_kind) == {kind}
+        assert set(utils.get_trials(utils.default_data_dir() / rel).action_kind) == {
+            kind
+        }
 
 
 def test_trial_rows_follow_the_task_periods():
     _drive()
     from neuralshed.datasets.kunz_2025.study import Kunz2025InnerSpeech
 
-    instance = Kunz2025InnerSpeech(path=utils.DATA_DIR.parent)
+    instance = Kunz2025InnerSpeech(path=utils.default_data_dir().parent)
     timelines = list(instance.iter_timelines())
 
     def load(index):
@@ -329,7 +333,7 @@ def all_trial_events():
 
     from neuralshed.datasets.kunz_2025.study import Kunz2025InnerSpeech
 
-    instance = Kunz2025InnerSpeech(path=utils.DATA_DIR.parent)
+    instance = Kunz2025InnerSpeech(path=utils.default_data_dir().parent)
     frames = []
     for index, timeline in enumerate(instance.iter_timelines()):
         events = instance._load_timeline_events(timeline)
@@ -499,11 +503,13 @@ def test_info_reproduces_from_a_fresh_run():
     from neuralshed.datasets.kunz_2025.study import Kunz2025InnerSpeech
 
     info = Kunz2025InnerSpeech._info
-    events = Kunz2025InnerSpeech(path=utils.DATA_DIR.parent, query=info.query).run()
+    events = Kunz2025InnerSpeech(
+        path=utils.default_data_dir().parent, query=info.query
+    ).run()
     assert len(events) == info.num_events_in_query
     assert set(events.type) == set(info.event_types_in_query)
     assert events.subject.nunique() <= info.num_subjects
-    instance = Kunz2025InnerSpeech(path=utils.DATA_DIR.parent)
+    instance = Kunz2025InnerSpeech(path=utils.default_data_dir().parent)
     assert len(list(instance.iter_timelines())) == info.num_timelines
 
 
@@ -569,7 +575,7 @@ def test_enumerating_timelines_loads_no_feature_matrix(monkeypatch):
 
     monkeypatch.setattr(utils, "_load_stream", forbidden)
     monkeypatch.setattr(utils, "recover_block_stops", forbidden)
-    instance = Kunz2025InnerSpeech(path=utils.DATA_DIR.parent)
+    instance = Kunz2025InnerSpeech(path=utils.default_data_dir().parent)
     assert len(list(instance.iter_timelines())) == 243
 
 

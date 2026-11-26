@@ -66,8 +66,8 @@ _PROCESSING = {
         "reference-block data; crossings counted per 10 ms bin"
     ),
     "spike_band_power": (
-        f"{_FILTER}; sum of squared voltages per 10 ms bin (the deposit README says "
-        "mean); values capped at 50,000 uV^2"
+        f"{_FILTER}; mean of squared voltages per 10 ms bin; "
+        "values capped at 50,000 uV^2"
     ),
 }
 
@@ -104,6 +104,41 @@ class Jude2026Typing(NeuralshedStudy):
         "sentence cues (calibration / sentence-copy / free-typing / handwriting) and isolated "
         "finger-movement cues. 19 sessions, 160 task blocks (Jude et al. 2026, Nature Neuroscience)."
     )
+    timeline_descriptions: tp.ClassVar[dict[str, dict[tp.Any, str]]] = {
+        "task_family": {
+            "finger_movement": (
+                "In this block each trial cues one finger movement as text, and the "
+                "participant attempts it after an instructed delay. There are 31 "
+                "conditions, each of the 10 fingers extended up, moved down or curled in "
+                "to the palm, plus rest, two trials each in a full block of 62. In blocks "
+                "2 and 3 of t18.2024.12.04 the cue is the key the movement types."
+            ),
+            "calibration": (
+                "In this calibration block the participant attempts to type a cued "
+                "sentence with no decoded output on screen. These blocks fit the decoder."
+            ),
+            "sentence_copy": (
+                "In this sentence-copy block the participant attempts to type a cued "
+                "sentence while the online decoder highlights its most likely key on the "
+                "on-screen keyboard."
+            ),
+            "free_typing": (
+                "In this free-typing block no sentence is cued. The participant types a "
+                "sentence of their own, a trial ends after a run of blank predictions, "
+                "and the sentence was confirmed with the participant afterwards."
+            ),
+            "handwriting": (
+                "In this handwriting block T18 attempts to handwrite cued calibration "
+                "sentences."
+            ),
+        },
+        "loop_type": {
+            "open": "This block is open loop.",
+            "closed": (
+                "This block is closed loop, with the online decoder running in real time."
+            ),
+        },
+    }
     requirements: tp.ClassVar[tuple[str, ...]] = ("scipy",)
 
     _info: tp.ClassVar[study.StudyInfo] = study.StudyInfo(

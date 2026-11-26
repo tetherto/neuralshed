@@ -100,7 +100,7 @@ For its character-error analysis (Fig. 4a-c) the paper trains on all calibration
 | Modality | Source location | Type / shape |
 |---|---|---|
 | Threshold crossings | `.mat` `binned_neural_threshold_crossings` | int16 `(n_bins, 384)`, 10 ms bins (100 Hz), -3.5 x SD counts |
-| Spike-band power | `.mat` `binned_neural_spike_band_power` | float32 `(n_bins, 384)`, 10 ms bins, sum of squared 250 Hz-5 kHz voltage, capped at 50,000 |
+| Spike-band power | `.mat` `binned_neural_spike_band_power` | float32 `(n_bins, 384)`, 10 ms bins, mean of squared 250 Hz-5 kHz voltage, capped at 50,000 |
 | Bin timestamps | `.mat` `binned_neural_nsp_timestamp`, `binned_neural_redis_clock` | float64 `(n_bins,)` ns (NSP), uint64 ms (BRAND) |
 | Cue (label) | `.mat` `cue` | char `(n_trials,)`, whitespace-padded sentence, movement or key |
 | Trial timing | `.mat` `*_nsp_neural_time` (plus `_redis_time`, and `_nsp_analog_time` for T17) | float64 `(n_trials,)`, trial start, go cue and trial end |
@@ -116,10 +116,10 @@ For its character-error analysis (Fig. 4a-c) the paper trains on all calibration
 `Data.zip` (Dryad version 2, 19.5 GB) expands to a `Data/{t17,t18}/` tree, one `.mat` per block, with a single-trial feature preview `.png` beside each:
 
 ```
-<NEURALSHED_DATA_ROOT>/jude_2026_typing/data/Jude2026Typing/        <- study folder (self.path, utils.DATA_DIR)
+<NEURALSHED_DATA_ROOT>/jude_2026_typing/data/Jude2026Typing/        <- study folder (self.path, utils.default_data_dir())
     README.md                                       Dryad description + block tables
     dryad_jude_2026_typing_success_download.txt     download marker (what was verified, and when)
-    Data/                                           utils.BLOCKS_ROOT
+    Data/                                           utils.default_blocks_root()
         t17/t17.YYYY.MM.DD/<Typing|brainToText>/RedisMat/
             20240425_135520_(1).mat                 block 1 (one block per file)
             20240425_135520_(1).png
@@ -155,7 +155,7 @@ Every trial emits, with the block-local 0-based `trial_id`:
 | `Sentence` | `cue` | per trial, go to trial end | `text` as the cue gives it, `language="en"`, `modality` `typed` or `written` (handwriting), `task_condition="attempted"` |
 | `Intertrial` | trial end and next trial start | gaps of 0.1 s or more | `period="intertrial"` |
 
-The package `SpikeCounts`, `BandPower` and `Intertrial` events and the built-in neuralset `Stimulus`, `Action` and `Sentence` cover every row. The neural rows declare the acquisition chain in `processing`: a non-causal 4th-order 250 Hz-5 kHz Butterworth (`filtfilt`), linear regression referencing per array fit on the session's reference block, thresholds at -3.5 x SD per electrode, and spike-band power as the sum of squared voltages per bin, capped at 50,000 uV^2. The microphone audio (T17) is anarthric and read with `utils.get_audio`, not emitted. One free-typing trial has no recorded sentence (`t18.2025.02.04` block 5 trial 6) and emits its go marker and gap but no unit row.
+The package `SpikeCounts`, `BandPower` and `Intertrial` events and the built-in neuralset `Stimulus`, `Action` and `Sentence` cover every row. The neural rows declare the acquisition chain in `processing`: a non-causal 4th-order 250 Hz-5 kHz Butterworth (`filtfilt`), linear regression referencing per array fit on the session's reference block, thresholds at -3.5 x SD per electrode, and spike-band power as the mean of squared voltages per bin, capped at 50,000 uV^2. The microphone audio (T17) is anarthric and read with `utils.get_audio`, not emitted. One free-typing trial has no recorded sentence (`t18.2025.02.04` block 5 trial 6) and emits its go marker and gap but no unit row.
 
 **Target alphabet.** The authors' decoder (`utils/mat_to_tfrecord.py`, `CHAR_DEF`) predicts 30 tokens plus the CTC blank: space, comma, question mark, period and `A`-`Z`, which are the 30 keys. Their recipe removes `--`, upper-cases the text and drops every other character, apostrophes and hyphens included. `Sentence.text` keeps the cue as given: calibration and sentence-copy cues are sentence case, free-typing and handwriting cues mostly lower case, and 341 sentences hold an apostrophe and 4 an exclamation mark, which the keyboard cannot type. A character target that matches what the participant typed applies the authors' mapping.
 
@@ -190,6 +190,8 @@ No source document states the column order, so it is established from the author
 - **T17.** The authors' FVAF notebook titles the six column groups `v6v, d6v, v55b, d55b, v6d, d6d`, which is the Study order of `jude_2026_speech` for the same implant. Matching the within-group correlation structure and the per-electrode median spike-band power of each 64-column group to a late `jude_2026_speech` block (`05.28` block 6, Study order) gives the identity on `04.25`, `06.03` and `06.13`, and against the early speech file `04.02` it gives that package's early permutation. `07.22` (day 144) matches on five of the six groups. Independently, the online normalization vectors match file columns 256-383 (6d) on day 95 and 0-127 plus 256-383 (6v and 6d) from day 96, the paper's "128 6v electrodes and 128 6d electrodes".
 - **T18.** The authors' FVAF notebook and `PlotArrayCERs.ipynb` agree on `mv6d` 0-63, `v6d` 64-127, `d6d` 128-191, `md6d` 192-255 in the left hemisphere and `Rl6d` 256-319, `Rm6d` 320-383 in the right, and the data confirm the hemisphere split (stronger tuning to the contralateral hand). Reading the left "m" as mid and the right "l" and "m" as lateral and medial is ours, the sources do not expand the abbreviations.
 
+T17's column order across `jude_2026_speech` and `kunz_2025` is covered in [T17 channel correspondence](../../../../docs/channel_mapping/t17.md).
+
 ### Source discrepancies
 
 The files are the authority for the Study. Where the deposit README or the paper says otherwise:
@@ -203,7 +205,7 @@ The files are the authority for the Study. Where the deposit README or the paper
 | deposited blocks that are not listed | deposit README tables leave them out | 8 blocks: four 10-trial sentence-copy blocks (`t18.2025.01.21` 7, `01.22` 4 and 7, `02.05` 7) that the authors' training code uses, one free-typing block whose four cues are empty (`t17.2024.06.04` 7), and three reference blocks (`t18.2024.12.03` 0, 7 and 8) | the four sentence-copy blocks are emitted, the other four are excluded |
 | `t18.2024.12.04` block 7 | listed once | two files with identical data, `20241204_163713_(7).mat` and `20241204_164727_(7).mat` | the first file |
 | handwriting block numbers (`t18.2025.04.01`) | deposit README: block 3 has 30 trials, block 4 has 10 | the file named `(3)` holds 30 trials but stores `block_number` 0, the file named `(4)` holds 10 trials and stores 3 | the number in the filename |
-| spike-band power | deposit README: "sum of squared voltages" in its description, "mean averaged sum" in its variable list | values capped at 50,000, which do not settle sum or mean | sum, as the paper states |
+| spike-band power | deposit README: "sum of squared voltages" in its description, "mean averaged sum" in its variable list | a typical channel reads a few hundred uV^2, the scale of the datasets that average. A sum over the 300 samples of a bin would put most values above the 50,000 cap, which almost none reach | mean |
 | `binned_neural_redis_clock` | deposit README: one timestamp per bin from the acquisition software (BRAND) | 7 files have a different number of timestamps than bins: 5 are off by one, and `t17.2024.07.22` blocks 4 and 5 have 551 and 836 fewer. All 7 are free-typing blocks with recording pauses | not used, everything is timed with the NSP timestamps |
 | decoder output timing | deposit README: a character prediction every 20 ms | non-zero `decoder_logit_output` rows every 80-320 ms, with all-zero rows in between | not emitted |
 

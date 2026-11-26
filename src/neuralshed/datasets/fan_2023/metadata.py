@@ -47,9 +47,11 @@ DATASET_METADATA = {
                 "Spinal cord injury (C4 AIS-C)",
                 "Tetraplegia",
             ],
+            # Neither deposit states the per-array split. Names/ranges follow willet_2021
+            # (same participant), a candidate from docs/channel_mapping/t5.md.
             "arrays": [
                 {
-                    "name": "array_1",
+                    "name": "lateral_array",
                     "hemisphere": "left",
                     "device_type": "utah_array",
                     "n_channels": 96,
@@ -58,7 +60,7 @@ DATASET_METADATA = {
                     "brain_area": "hand knob, motor cortex (left precentral gyrus)",
                 },
                 {
-                    "name": "array_2",
+                    "name": "medial_array",
                     "hemisphere": "left",
                     "device_type": "utah_array",
                     "n_channels": 96,
@@ -106,7 +108,7 @@ def sessions() -> list[dict]:
 
     from . import utils
 
-    root = utils.default_root()
+    root = utils.default_data_dir()
     days: dict[str, int] = {}
     for src in utils.list_sources(root):
         days[src["date"]] = days.get(src["date"], 0) + utils.count_trials(
