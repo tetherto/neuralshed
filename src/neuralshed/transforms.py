@@ -22,7 +22,7 @@ stored config resolves once this module is imported.
 
 :class:`StandardizeText`, :class:`ValidateTarget`, :class:`AssignSourceSplit`,
 :class:`AssignHashSplit` and :class:`AssignDataLayouts` are generic, dataset-agnostic
-transforms. None knows anything about BIT. A member needing a different rule puts its own copy
+transforms. None knows anything about a particular model. A member needing a different rule puts its own copy
 in that member's chain rather than these carrying a per-member dict, since the ``Chain``
 structure *is* the per-member mechanism. :class:`AssignSourceSplit` is the clearest case: its
 mapping is per member by construction, because it runs before the fan-in.
@@ -106,7 +106,7 @@ class CombineStudies(ns.base.Step):
 
 
 class DummyTransform(ns.EventsTransform):
-    """No-op passthrough, to exercise the collection builder before real transforms land."""
+    """No-op passthrough, for exercising collection chains without changing the events."""
 
     note: str = ""
 
@@ -128,7 +128,7 @@ class StandardizeText(ns.EventsTransform):
     silently dropping characters. Rows with no text (a neural stream) get an empty string
     rather than ``NaN``, so a later ``dest != ''`` condition is well-defined everywhere.
 
-    Generic: it knows nothing about targets or BIT. Different members normalize the same way,
+    Generic: it knows nothing about targets or models. Different members normalize the same way,
     so this normally runs once after the fan-in rather than per member.
     """
 

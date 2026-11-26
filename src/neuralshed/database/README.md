@@ -201,7 +201,7 @@ neuroai unifies signals and task events under one `Event` hierarchy, so this one
 `id` (PK) · `dataset_id` (FK) · `subject_id` (FK) · `label` · `task` · `task_condition` · `date` · `post_implant_day` · `n_trials` · `original_split` (the paper's own split label, e.g. FALCON held-in/held-out). Unique on `(dataset_id, label)`.
 
 ### `collections` / `collection_datasets` — saved poolable groups (many-to-many)
-The persisted form of a decoder's data spec: a group of datasets assembled to train one decoder together, built in the collection builder app.
+The persisted form of a decoder's data spec: a group of datasets assembled to train one decoder together.
 - `collections`: `id` (PK) · `name` (unique) · `description` · `notes` · `chain` (the composed `CombineStudies` step chain, carrying no paths). Then two groups that differ in kind. *Declared*: `input_event_types` / `target_event_types`, neuroai event class names saying what the collection reads and what it decodes. Naming the target class is what says which decoder head this is, more precisely than the dataset-level `decode_target` family would. *Resolved*: `manifest` (the layout table, a rebuildable cache) with `manifest_built_at` / `manifest_recipe_digest` / `manifest_builder_version`.
 - `collection_datasets` (association object, `Collection` ↔ `Dataset`): `id` (PK) · `collection_id` (FK) · `dataset_id` (FK). Unique on `(collection_id, dataset_id)`. Per-study filters live on the study step of the collection chain (`Study.query`), not here.
 

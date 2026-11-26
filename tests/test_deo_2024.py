@@ -4,36 +4,6 @@ import pytest
 
 from neuralshed.datasets.deo_2024 import utils
 from neuralshed.datasets.deo_2024.study import Deo2024Bimanual
-from neuralshed.models.data import (
-    MOTOR_CURSOR_MEMBER_QUERIES_CLOSED_LOOP,
-    motor_cursor_collection,
-)
-
-
-def test_closed_loop_collection_keeps_trials_that_end_before_timeout():
-    if not utils.default_data_dir().is_dir():
-        pytest.skip(f"deo_2024 data not mounted at {utils.default_data_dir()}")
-
-    events = motor_cursor_collection(
-        members=("deo_2024",),
-        member_queries=MOTOR_CURSOR_MEMBER_QUERIES_CLOSED_LOOP,
-    ).run()
-    actions = events[events.type == "Action"]
-    assert len(actions) == 1351
-    move_bins = (actions.duration * 50).round().astype(int)
-    assert (move_bins < 499).all()
-    late = actions[move_bins.between(496, 498)]
-    assert set(
-        late[["session", "block", "trial_id"]].itertuples(index=False, name=None)
-    ) == {
-        ("t5_06_28_2021", 16, 36),
-        ("t5_07_12_2021", 19, 38),
-        ("t5_07_12_2021", 20, 40),
-        ("t5_07_14_2021", 18, 44),
-        ("t5_07_14_2021", 21, 8),
-        ("t5_09_13_2021", 15, 25),
-    }
-    assert set(actions.success) == {True}
 
 
 def test_success_is_false_on_closed_loop_timeouts():
@@ -224,18 +194,6 @@ def test_block_conditions_are_timeline_attributes():
         )
         == 40
     )
-
-
-def test_open_loop_collection_keeps_trial_windows_and_continuous_streams():
-    if not utils.default_data_dir().is_dir():
-        pytest.skip(f"deo_2024 data not mounted at {utils.default_data_dir()}")
-
-    events = motor_cursor_collection(members=("deo_2024",)).run()
-    assert len(events[events.type == "Action"]) == 4344
-    assert len(events[events.type == "SpikeCounts"]) == 92
-    assert len(events[events.type == "CursorPositionSeries"]) == 92
-    assert len(events[events.type == "TargetPositionSeries"]) == 92
-    assert set(events.loop_type) == {"open"}
 
 
 def test_block_ranges_are_derived_without_timeline_offsets():

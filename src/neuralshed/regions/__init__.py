@@ -3,7 +3,7 @@
 Holds a small *induced subtree* of a brain-region ontology covering only the areas our
 datasets actually use -- HOMBA today (``homba.json``); a UBERON sibling (``uberon.json``)
 could drop in with the same shape. Each node maps an id to its official label and its
-``part_of`` parent, so the collection builder / model can render a collapsible region tree and walk it
+``part_of`` parent, so a viewer or model can render a collapsible region tree and walk it
 to any granularity. The DB stays ontology-agnostic (it stores only ``homba_id`` /
 ``uberon_id`` on ``brain_areas``); this file supplies the names and hierarchy.
 

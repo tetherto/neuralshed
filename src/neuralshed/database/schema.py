@@ -16,7 +16,7 @@ Entities:
 - ``Session``     — per-session rows (date, post-implant day, original split, counts; drive-dependent).
 - ``Collection`` / ``CollectionDataset`` — a saved group of datasets to train one decoder together
                     (many-to-many with ``Dataset``); the persisted form of a decoder's
-                    spec, plus the step chain that pools them, assembled in the collection builder app.
+                    spec, plus the step chain that pools them.
 
 Controlled-vocabulary columns (``source_data_platform``, ``status``, ``macro_task``,
 ``device_type``, ``signal_type``, ``modality``, ``task_condition``) are plain strings here
@@ -403,10 +403,9 @@ class Collection(Base):
     The persisted form of a decoder's input spec: a collection names its member datasets and
     what it reads and decodes. Datasets belong to many
     collections and a collection holds many datasets: a many-to-many through
-    ``collection_datasets``. Assembled in the collection builder frontend;
-    ``database/collections.py`` is the read/write API.
+    ``collection_datasets``. ``database/collections.py`` is the read/write API.
 
-    ``chain`` holds the neuroai step chain the builder composes (a ``Chain`` headed by
+    ``chain`` holds the neuroai step chain that pools the members (a ``Chain`` headed by
     ``CombineStudies``), ready to become a ``neuraltrain`` ``Data.study``. It carries no
     ``path``: that is environment, injected when the config is loaded.
 

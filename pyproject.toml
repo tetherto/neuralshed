@@ -38,10 +38,6 @@ viz = [
     "anywidget>=0.9",
     "ipywidgets>=8",
 ]
-collection_builder = [
-    "fastapi",
-    "uvicorn[standard]",
-]
 
 [tool.setuptools]
 package-dir = {"" = "src"}

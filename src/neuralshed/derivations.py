@@ -3,7 +3,7 @@
 A *derivation* produces a new quantity out of what a source published: the velocity of a
 position, the direction from a cursor to its target. It belongs to the dataset and to the
 question being asked, not to any one model, and it is never undone. That is what separates it
-from normalization (``models/bit/preprocess.py``), which leaves the quantity alone, rescales
+from normalization, which leaves the quantity alone, rescales
 it for one network, is fitted on the training split, and is reversed before scoring.
 
 A derivation runs over a whole timeline rather than a trial window, so a difference has a real

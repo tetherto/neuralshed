@@ -6,7 +6,7 @@ A *collection* is a saved group of datasets assembled to train one decoder toget
 filters belong on the study step of the collection chain, not here.
 
 Writes live here so ``query.py`` stays a read-only view over the catalog. Assembled
-interactively in the collection builder app, or programmatically::
+programmatically::
 
     from neuralshed.database import collections
     collections.save_collection(
