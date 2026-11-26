@@ -26,10 +26,6 @@ STATUSES = {
 MACRO_TASKS = {
     "human_communication",
     "human_motor",
-    "nhp_visual",
-    "nhp_navigation",
-    "nhp_motor",
-    "nhp_learning",
 }
 
 # What a decoder trained on a dataset (or collection) outputs. Names the *output* modality,

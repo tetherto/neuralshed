@@ -107,7 +107,7 @@ Timeline attributes, broadcast to every row of the timeline, chosen so the slice
 
 `code` on the trial rows is the **block-local** index into that block's distinct target centres. A fixed spoke code would be wrong, because target layouts vary from 8 spokes plus a centre to a 57-cell grid to randomly placed targets. Use `target_x` / `target_y` to compare geometry across blocks. `trial_id` is the trial's 0-based row in its session file's trial list, unique within a session.
 
-`code` names the cued target, not the movement. On the 396 `cursor` blocks with a centre target, 22,973 trials return to the centre, from a median of 8 different targets per block, and all share the centre's code. These blocks carry `trial_kind`, `center_out` or `return`, as in `even_chen_2019`, and the target a return leaves from is the previous trial's. The one `cursor` block without a centre target (`t5.2016.09.26` block 19) goes from target to target and has no `trial_kind`.
+`code` names the cued target, not the movement. On the 396 `cursor` blocks with a centre target, 22,973 trials return to the centre, from a median of 8 different targets per block, and all share the centre's code. These blocks carry `trial_kind`, `center_out` or `return`, and the target a return leaves from is the previous trial's. The one `cursor` block without a centre target (`t5.2016.09.26` block 19) goes from target to target and has no `trial_kind`.
 
 No new Events or Extractors were needed. The dataset is a pure consumer of `neuralshed/events.py` and `neuralshed/extractors.py`.
 

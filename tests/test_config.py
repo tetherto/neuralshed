@@ -6,8 +6,7 @@ import pytest
 
 from neuralshed import config
 from neuralshed.datasets import nwb
-from neuralshed.datasets.athalye_2023 import utils as athalye
-from neuralshed.datasets.even_chen_2019 import utils as even_chen
+from neuralshed.datasets.karpowicz_2024_h1 import utils as karpowicz_h1
 from neuralshed.datasets.utils import data_root
 
 OTHER_VAR = "NEURALSHED_TEST_UNRELATED"
@@ -28,20 +27,16 @@ def test_unset_data_root_raises_on_use(clean_env):
 
 
 def test_dandi_datasets_stream_without_data_root(clean_env, monkeypatch):
+    path = "sub-HumanPitt-held-in-calib/sub-HumanPitt-held-in-calib_ses-19250106T120811.nwb"
+
     def list_assets(dandiset, version, glob=None):
-        names = {
-            "000404": "sub-monk-g_ses-session0",
-            "000121": "sub-Reggie_ses-20170119",
-        }
-        return [{"path": f"sub-x/{names[dandiset]}.nwb"}]
+        assert dandiset == karpowicz_h1.DANDISET_ID
+        return [{"path": path, "asset_id": "a1", "size": 1}]
 
     monkeypatch.setattr(nwb, "dandi_list_assets", list_assets)
-    monkeypatch.setattr(nwb, "dandi_asset_url", lambda *args: "https://dandi/url")
-    asset = "000404/sub-x/sub-monk-g_ses-session0.nwb"
-    assert athalye.list_assets() == [asset]
-    assert athalye.resolve_source(asset) == "https://dandi/url"
-    assert [ref.path for ref in even_chen.list_sessions()] == [
-        "000121/sub-x/sub-Reggie_ses-20170119.nwb"
+    assert karpowicz_h1.default_data_dir() is None
+    assert karpowicz_h1.list_assets() == [
+        {"path": path, "asset_id": "a1", "size": 1, "split": "held-in-calib"}
     ]
 
 

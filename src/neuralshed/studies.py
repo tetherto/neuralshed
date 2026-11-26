@@ -8,10 +8,8 @@ Alongside :mod:`neuralshed.transforms`, which registers ``CombineStudies`` and
 ``DummyTransform``, this covers every step a collection config can name.
 """
 
-from .datasets.athalye_2023.study import Athalye2023CursorBMI
 from .datasets.card_2024.study import Card2024Brain2Text
 from .datasets.deo_2024.study import Deo2024Bimanual
-from .datasets.even_chen_2019.study import EvenChen2019DelayedReach
 from .datasets.fan_2023.study import Fan2023Handwriting
 from .datasets.gusman_2025.study import Gusman2025DragAndDrop
 from .datasets.jude_2026_speech.study import Jude2026IntendedSpeech
@@ -19,7 +17,6 @@ from .datasets.jude_2026_typing.study import Jude2026Typing
 from .datasets.karpowicz_2024_h1.study import Karpowicz2024FalconH1
 from .datasets.karpowicz_2025.study import Karpowicz2025CursorStability
 from .datasets.kunz_2025.study import Kunz2025InnerSpeech
-from .datasets.perich_2018.study import Perich2018Reaching
 from .datasets.singer_2025.study import Singer2025CursorControl
 from .datasets.wairagkar_2025.study import Wairagkar2025Brain2Voice
 from .datasets.willet_2021.study import Willett2021Handwriting
@@ -28,10 +25,8 @@ from .datasets.willsey_2025.study import Willsey2025FingerDecoding
 from .datasets.wilson_2025.study import Wilson2025CursorRecalibration
 
 __all__ = [
-    "Athalye2023CursorBMI",
     "Card2024Brain2Text",
     "Deo2024Bimanual",
-    "EvenChen2019DelayedReach",
     "Fan2023Handwriting",
     "Gusman2025DragAndDrop",
     "Jude2026IntendedSpeech",
@@ -39,7 +34,6 @@ __all__ = [
     "Karpowicz2024FalconH1",
     "Karpowicz2025CursorStability",
     "Kunz2025InnerSpeech",
-    "Perich2018Reaching",
     "Singer2025CursorControl",
     "Wairagkar2025Brain2Voice",
     "Willett2021Handwriting",

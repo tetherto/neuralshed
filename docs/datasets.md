@@ -1,12 +1,10 @@
 # Datasets Summary
 
-37 datasets identified for foundation-model training, organized by **macro-task group**.
+16 human datasets identified for foundation-model training, organized by **macro-task group**.
 
 - **dataset** = simplified snake_case id (matches the `datasets/<name>/` folder convention).
 - **status** = per-dataset pipeline state; see the [status legend](#status-legend) at the end.
 - **Readiness gaps** (after each group's table) = which of `publication` / `annotated data`/ `code` are still missing toward 3/3; datasets not listed are 3/3.
-
-**Counts:** total 37. Two pairs share a source and are counted once: `temmar_2021`/`link_dataset` (`001201`); `odoherty_2017`/`makin_2018` (`000129`, O'Doherty on DANDI covers both).
 
 
 ## Human Communication
@@ -42,79 +40,6 @@ Reach & grasp, cursor, gesture, finger, bimanual.
 | [deo_2024](../src/neuralshed/datasets/deo_2024/README.md) | motor cortex | bimanual movement | dryad | ml_ready |
 
 *requires a curation round or specific fixes
-
----
-
-## Non-Human Primates: Visual
-
-Natural vision, shape/texture, natural images.
-
-| dataset | brain_area | task | source | status |
-|---|---|---|---|---|
-| xiao_2024 | V1, V2, V4, PIT, CIT, AIT | natural vision | dandi (000628) | not_started |
-| kim_2025 | V4 | shape/texture stimuli | dandi (001357) | not_started |
-| papale_2025 | V1, V4, IT | natural images (THINGS) | gin | not_started |
-
-**Readiness gaps:**
-- kim_2025: code
-
----
-
-## Non-Human Primates: Navigation
-
-Mental navigation, prey capture, ball interception.
-
-| dataset | brain_area | task | source | status |
-|---|---|---|---|---|
-| neupane_ppc_2024 | posterior parietal ctx | mental navigation | dandi (001275) | not_started |
-| neupane_ec_2024 | entorhinal cortex | mental navigation | dandi (000897) | not_started |
-| moore_2024 | M1 / somatosensory | prey capture | dandi (001062) | not_started |
-| rajalingham_2025 | DMFC | ball interception | zenodo | not_started |
-
-**Readiness gaps:**
-- neupane_ppc_2024: annotated data, code
-- neupane_ec_2024: annotated data, code
-- moore_2024: annotated data, code
-
----
-
-## Non-Human Primates: Motor Control
-
-Reaching, center-out, finger, cursor.
-
-| dataset | brain_area | task | source | status |
-|---|---|---|---|---|
-| churchland_2012 | M1, PMd | reaching | dandi (000070) | not_started |
-| even_chen_2019 | PMd | cursor movement | dandi (000121) | study_wip |
-| perich_2018 | M1, PMd | reaching | dandi (000688) | study_wip |
-| athalye_2023 | PMd, M1 | reaching / obstacle avoidance | dandi (000404) | study_wip |
-| m1a | M1 | center-out reaching | dandi (000941) | not_started |
-| m1b | M1 | center-out reaching | dandi (001209) | not_started |
-| temmar_2021 | M1 | finger movement | dandi (001201) | not_started |
-| m2 | M1 | finger movement | dandi (000953) | not_started |
-| area2_bump_2020 | somatosensory area 2 | reaching with perturbations | dandi (000127) | not_started |
-| odoherty_2017 | M1, S1 | self-paced reaching | dandi (000129) | not_started |
-| lanzarini_2025 | premotor, motor cortex | head restraint / free movement | osf | not_started |
-| ma_2023 | motor cortex | reaching (adversarial decoding) | dryad | not_started |
-
-**Readiness gaps:**
-- even_chen_2019: annotated data, code
-
-**Shared sources:** temmar_2021 ≡ link_dataset · odoherty_2017 also covers makin_2018.
-
----
-
-## Non-Human Primates: Learning
-
-Time-interval reproduction, rule learning.
-
-| dataset | brain_area | task | source | status |
-|---|---|---|---|---|
-| dmfc_rsg_2019 | DMFC | time-interval reproduction | dandi (000130) | not_started |
-| wojcik_2023 | PFC | rule learning | dryad | not_started |
-
-**Readiness gaps:**
-- wojcik_2023: code
 
 ---
 
